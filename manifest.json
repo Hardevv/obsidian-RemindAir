@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-notifier",
+  "name": "aaaaa obsidian notifier",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Replaces bare URLs with rich link previews showing favicon, title, and description.",
+  "author": "Hardevv",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

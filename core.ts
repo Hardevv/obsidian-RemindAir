@@ -1,0 +1,53 @@
+import { REMINDER_REGEXP } from "consts";
+import { DateTimePicker } from "datetimePickerModal";
+import ObsidianNotifierPlugin from "main";
+import { Editor, MarkdownView } from "obsidian";
+
+export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: number, currentDate: string): void => {
+  new DateTimePicker(
+    plugin.app,
+    async (date) => {
+      const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+      if (!editor) return;
+
+      const wasUpdated = replaceReminderById(editor, reminderId, date);
+      if (!wasUpdated) return;
+    },
+    currentDate,
+  ).open();
+};
+
+/** `newData: null` will remove reminder */
+export const replaceReminderById = (editor: Editor, reminderId: number, newDate: string | null): boolean => {
+  for (const match of editor.getValue().matchAll(REMINDER_REGEXP)) {
+    if (Number(match[2]) !== reminderId) continue;
+
+    const from = editor.offsetToPos(match.index!);
+    const to = editor.offsetToPos(match.index! + match[0].length);
+    const replaceWith = newDate ? `🔔 ${newDate} ^r-${reminderId}` : "";
+    editor.replaceRange(replaceWith, from, to);
+    return true;
+  }
+
+  return false;
+};
+
+export const openReminderEditorAtCursor = (plugin: ObsidianNotifierPlugin): void => {
+  const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+  if (!editor) return;
+
+  const cursor = editor.getCursor();
+  const line = editor.getLine(cursor.line);
+
+  for (const match of line.matchAll(REMINDER_REGEXP)) {
+    const full = match[0];
+    const date = match[1];
+    const id = Number(match[2]);
+    const from = match.index ?? 0;
+    const to = from + full.length;
+
+    if (cursor.ch < from || cursor.ch > to) continue;
+    openReminderEditor(plugin, id, date);
+    return;
+  }
+};

@@ -1,0 +1,64 @@
+.obsidian-notifier-date-time-picker-modal {
+  width: 350px;
+}
+
+.obsidian-notifier-date-time-picker-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.obsidian-notifier-date-time-input {
+  visibility: hidden;
+  height: 0 !important;
+}
+
+.obsidian-notifier-datetime-picker-confirm-button {
+  background-color: var(--interactive-accent) !important;
+  color: var(--text-on-accent);
+  font-size: 16px;
+  margin-top: 15px !important;
+  letter-spacing: 1px;
+  font-weight: 600;
+  border: none;
+  padding: 22px 44px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.flatpickr-day + .selected {
+  background: var(--interactive-accent) !important;
+  border: var(--interactive-accent) !important;
+}
+
+.obsidian-notifier-reminder-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.05em 0.2em;
+}
+
+.obsidian-notifier-reminder-widget:focus-visible,
+.obsidian-notifier-reminder-widget:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+  outline: none;
+}
+
+.obsidian-notifier-reminder-widget-date {
+  font-size: 0.82em;
+  opacity: 0.85;
+}
+.obsidian-notifier-reminder-widget-delete-btn {
+  background: transparent !important;
+  box-shadow: none !important;
+  border: none;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.obsidian-notifier-reminder-widget-delete-btn svg {
+  height: 14px;
+  width: 14px;
+}
