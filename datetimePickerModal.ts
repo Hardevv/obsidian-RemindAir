@@ -8,7 +8,7 @@ export class DateTimePicker extends Modal {
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   initialDate: string | null;
-  private _viewportCleanup: (() => void) | null = null;
+  private viewportCleanup: (() => void) | null = null;
 
   constructor(app: App, onSubmit: (date: string) => void, initialDate: string | null = null) {
     super(app);
@@ -68,10 +68,10 @@ export class DateTimePicker extends Modal {
       submitSelectedDate();
     });
 
-    this._setupMobileKeyboardHandling();
+    this.setupMobileKeyboardHandling();
   }
 
-  private _setupMobileKeyboardHandling(): void {
+  private setupMobileKeyboardHandling(): void {
     const vv = window.visualViewport;
     if (!vv) return;
 
@@ -95,7 +95,7 @@ export class DateTimePicker extends Modal {
     vv.addEventListener("resize", reposition);
     vv.addEventListener("scroll", reposition);
 
-    this._viewportCleanup = () => {
+    this.viewportCleanup = () => {
       vv.removeEventListener("resize", reposition);
       vv.removeEventListener("scroll", reposition);
 
@@ -107,8 +107,8 @@ export class DateTimePicker extends Modal {
   }
 
   onClose(): void {
-    this._viewportCleanup?.();
-    this._viewportCleanup = null;
+    this.viewportCleanup?.();
+    this.viewportCleanup = null;
     this.contentEl.empty();
   }
 }
