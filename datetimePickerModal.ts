@@ -8,6 +8,7 @@ export class DateTimePicker extends Modal {
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   initialDate: string | null;
+  private _viewportCleanup: (() => void) | null = null;
 
   constructor(app: App, onSubmit: (date: string) => void, initialDate: string | null = null) {
     super(app);
@@ -66,9 +67,48 @@ export class DateTimePicker extends Modal {
     btn.addEventListener("click", () => {
       submitSelectedDate();
     });
+
+    this._setupMobileKeyboardHandling();
+  }
+
+  private _setupMobileKeyboardHandling(): void {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const container = this.containerEl; // .modal-container
+    const modal = this.modalEl; // .modal
+
+    const reposition = () => {
+      const isKeyboardActive = vv.height < window.innerHeight * 0.85;
+
+      if (!isKeyboardActive) return;
+      // Pin the container exactly to the visible part of the screen
+      container.style.position = "fixed";
+      container.style.top = `${vv.offsetTop}px`;
+      container.style.height = `${vv.height}px`;
+      container.style.bottom = "auto";
+
+      modal.style.maxHeight = `${vv.height - 20}px`;
+    };
+
+    // Both events are needed: resize - keyboard opens/closes | scroll when iOS shifts the viewport offset
+    vv.addEventListener("resize", reposition);
+    vv.addEventListener("scroll", reposition);
+
+    this._viewportCleanup = () => {
+      vv.removeEventListener("resize", reposition);
+      vv.removeEventListener("scroll", reposition);
+
+      container.style.top = "";
+      container.style.height = "";
+      container.style.bottom = "";
+      modal.style.maxHeight = "";
+    };
   }
 
   onClose(): void {
+    this._viewportCleanup?.();
+    this._viewportCleanup = null;
     this.contentEl.empty();
   }
 }

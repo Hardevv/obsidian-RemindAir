@@ -1,5 +1,19 @@
 .obsidian-notifier-date-time-picker-modal {
   width: 350px;
+  overflow-y: auto;
+}
+
+.is-mobile .obsidian-notifier-date-time-picker-modal {
+  max-height: 85vh;
+  margin-top: 0 !important;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* Move modal so keyboard is not overlapping it */
+.is-mobile .modal-container:has(.obsidian-notifier-date-time-picker-modal) {
+  align-items: flex-start;
+  padding-top: env(safe-area-inset-top, 10px);
 }
 
 .obsidian-notifier-date-time-picker-modal .modal-content {
