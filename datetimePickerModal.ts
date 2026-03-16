@@ -44,9 +44,13 @@ export class DateTimePicker extends Modal {
     }, 0);
 
     const submitSelectedDate = () => {
-      const date = fp.selectedDates[0] ?? defaultDateTime;
-      this.onSubmit(toLocalDateTimeValue(date));
-      this.close();
+      // timeout because flatpickr needs to update its values, and we are submitting on enter keydown which happens before the value is updated
+      setTimeout(() => {
+        const rawDate = fp.input.value;
+        const date = fp.parseDate(rawDate) ?? defaultDateTime;
+        this.onSubmit(toLocalDateTimeValue(date));
+        this.close();
+      }, 0);
     };
 
     const minuteInput = fp.calendarContainer.querySelector<HTMLInputElement>(".flatpickr-time .flatpickr-minute");
