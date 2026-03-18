@@ -40,13 +40,8 @@ export const openReminderEditorAtCursor = (plugin: ObsidianNotifierPlugin): void
   const line = editor.getLine(cursor.line);
 
   for (const match of line.matchAll(REMINDER_REGEXP)) {
-    const full = match[0];
     const date = match[1];
     const id = Number(match[2]);
-    const from = match.index ?? 0;
-    const to = from + full.length;
-
-    if (cursor.ch < from || cursor.ch > to) continue;
     openReminderEditor(plugin, id, date);
     return;
   }

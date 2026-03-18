@@ -4,7 +4,7 @@ import { PLUGIN_NAME, REMINDER_REGEXP } from "consts";
 import { openReminderEditor, replaceReminderById } from "core";
 import ObsidianNotifierPlugin from "main";
 import { editorLivePreviewField, MarkdownView, setIcon } from "obsidian";
-import { getDateObjectFromReminderString } from "utils";
+import { getDateObjectFromReminderString, isDateEqual } from "utils";
 
 class ReminderWidget extends WidgetType {
   constructor(
@@ -30,12 +30,20 @@ class ReminderWidget extends WidgetType {
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(startOfWeek.getDate() + 7);
 
+    const isToday = isDateEqual(date, now, true);
+    const isInFuture = dateObj.getTime() > now.getTime();
     const isCurrentWeek = dateObj >= startOfWeek && dateObj < endOfWeek;
 
+    const day = isToday
+      ? ""
+      : isCurrentWeek && isInFuture
+        ? dateObj.toLocaleString("default", { weekday: "short" })
+        : String(dateObj.getDate()).padStart(2, "0");
+
     return {
-      year: isCurrentWeek ? null : dateObj.getFullYear(),
-      month: isCurrentWeek ? null : dateObj.toLocaleString("default", { month: "short" }),
-      day: isCurrentWeek ? dateObj.toLocaleString("default", { weekday: "short" }) : String(dateObj.getDate()).padStart(2, "0"),
+      year: (isCurrentWeek && isInFuture) || isToday ? null : dateObj.getFullYear(),
+      month: (isCurrentWeek && isInFuture) || isToday ? null : dateObj.toLocaleString("default", { month: "short" }),
+      day,
       hours: String(dateObj.getHours()).padStart(2, "0"),
       minutes: String(dateObj.getMinutes()).padStart(2, "0"),
     };
