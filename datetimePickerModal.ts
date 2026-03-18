@@ -7,13 +7,11 @@ export class DateTimePicker extends Modal {
   _selectedDate: string | null = null;
   modalEl: HTMLElement;
   titleEl: HTMLElement;
-  initialDate: string | null;
   private viewportCleanup: (() => void) | null = null;
 
-  constructor(app: App, onSubmit: (date: string) => void, initialDate: string | null = null) {
+  constructor(app: App, onSubmit: (date: string) => void) {
     super(app);
     this.onSubmit = onSubmit;
-    this.initialDate = initialDate;
     this.modalEl.addClass(`${PLUGIN_NAME}-date-time-picker-modal`);
     this.titleEl.textContent = "Select reminder date & time";
   }
@@ -21,7 +19,7 @@ export class DateTimePicker extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     const input = contentEl.createEl("input", { cls: `${PLUGIN_NAME}-date-time-input` });
-    const parsedInitialDate = this.initialDate ? new Date(this.initialDate) : null;
+    const parsedInitialDate = new Date();
     const defaultDateTime =
       parsedInitialDate && !Number.isNaN(parsedInitialDate.getTime()) ? parsedInitialDate : new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
 
