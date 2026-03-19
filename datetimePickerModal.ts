@@ -32,6 +32,9 @@ export class DateTimePicker extends Modal {
       defaultDate: defaultDateTime,
       dateFormat: "Y-m-d H:i",
       allowInput: true,
+      locale: {
+        firstDayOfWeek: 1,
+      },
     }) as flatpickr.Instance;
 
     setTimeout(() => {
