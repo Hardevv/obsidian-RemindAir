@@ -32,8 +32,10 @@ export class DateTimePicker extends Modal {
       defaultDate: defaultDateTime,
       dateFormat: "Y-m-d H:i",
       allowInput: true,
-      locale: {
-        firstDayOfWeek: 1,
+      locale: { firstDayOfWeek: 1 },
+      onDayCreate(_, __, ___, dayElem) {
+        const day = dayElem.dateObj.getDay();
+        if (day === 0 || day === 6) dayElem.classList.add("weekend");
       },
     }) as flatpickr.Instance;
 

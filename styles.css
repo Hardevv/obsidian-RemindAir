@@ -40,7 +40,13 @@
   cursor: pointer;
 }
 
-.flatpickr-day + .selected {
+.obsidian-notifier-date-time-picker-modal .flatpickr-day:focus-visible,
+.obsidian-notifier-date-time-picker-modal .flatpickr-day.focused {
+  outline: 2px solid var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent) !important;
+}
+
+.flatpickr-day.selected {
   background: var(--interactive-accent) !important;
   border: var(--interactive-accent) !important;
 }
@@ -52,12 +58,6 @@
   cursor: pointer;
   border-radius: 6px;
   padding: 0.05em 0.2em;
-}
-
-.obsidian-notifier-reminder-widget:focus-visible,
-.obsidian-notifier-reminder-widget:hover {
-  background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
-  outline: none;
 }
 
 .obsidian-notifier-reminder-widget-date {
@@ -76,4 +76,22 @@
 .obsidian-notifier-reminder-widget-delete-btn svg {
   height: 14px;
   width: 14px;
+}
+
+/* weekend */
+.obsidian-notifier-date-time-picker-modal .flatpickr-day.weekend:not(.selected):not(.today) {
+  color: var(--color-base-60);
+  border-color: transparent;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.obsidian-notifier-date-time-picker-modal .flatpickr-day.weekend.selected,
+.obsidian-notifier-date-time-picker-modal .flatpickr-day.weekend.today {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.flatpickr-day.prevMonthDay,
+.flatpickr-day.nextMonthDay {
+  opacity: 0.5;
 }
