@@ -9,7 +9,7 @@ import { getDateObjectFromReminderString, isDateEqual } from "utils";
 class ReminderWidget extends WidgetType {
   constructor(
     private readonly plugin: ObsidianNotifierPlugin,
-    private readonly reminderId: number,
+    private readonly reminderId: string,
     private readonly date: string,
   ) {
     super();
@@ -107,7 +107,7 @@ const buildReminderDecorations = (view: EditorView, plugin: ObsidianNotifierPlug
         start,
         start + match[0].length,
         Decoration.replace({
-          widget: new ReminderWidget(plugin, Number(match[2]), match[1]),
+          widget: new ReminderWidget(plugin, match[2], match[1]),
           inclusive: false,
         }),
       );

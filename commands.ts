@@ -3,6 +3,7 @@ import { openReminderEditorAtCursor } from "core";
 import { DateTimePicker } from "datetimePickerModal";
 import ObsidianNotifierPlugin from "main";
 import { MarkdownView } from "obsidian";
+import { getRandomIdSuffix } from "utils";
 
 const setReminder = (plugin: ObsidianNotifierPlugin) => {
   plugin.addCommand({
@@ -18,7 +19,7 @@ const setReminder = (plugin: ObsidianNotifierPlugin) => {
         const line = editor.getLine(cursor.line);
 
         editor.replaceRange(
-          `${line} 🔔 ${date} ^r-${plugin.settings.idCounter}`,
+          `${line} 🔔 ${date} ^r-${plugin.settings.idCounter}-${getRandomIdSuffix()}`,
           { line: cursor.line, ch: 0 },
           { line: cursor.line, ch: line.length },
         );

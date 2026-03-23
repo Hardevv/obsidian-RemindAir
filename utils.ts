@@ -1,3 +1,5 @@
+import { ID_LETTERS } from "consts";
+
 export const getDateObjectFromReminderString = (reminderString: string): Date | null => {
   try {
     return new Date(reminderString);
@@ -14,3 +16,5 @@ export const isDateEqual = (date1: string | Date, date2: string | Date, shallow?
   if (shallow) return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
   return d1.getTime() === d2.getTime();
 };
+
+export const getRandomIdSuffix = () => ID_LETTERS[Math.floor(Math.random() * ID_LETTERS.length)];

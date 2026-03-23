@@ -3,7 +3,7 @@ import { DateTimePicker } from "datetimePickerModal";
 import ObsidianNotifierPlugin from "main";
 import { Editor, MarkdownView } from "obsidian";
 
-export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: number, currentDate: string): void => {
+export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: string, currentDate: string): void => {
   new DateTimePicker(
     plugin.app,
     async (date) => {
@@ -18,9 +18,9 @@ export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: n
 };
 
 /** `newData: null` will remove reminder */
-export const replaceReminderById = (editor: Editor, reminderId: number, newDate: string | null): boolean => {
+export const replaceReminderById = (editor: Editor, reminderId: string, newDate: string | null): boolean => {
   for (const match of editor.getValue().matchAll(REMINDER_REGEXP)) {
-    if (Number(match[2]) !== reminderId) continue;
+    if (match[2] !== reminderId) continue;
 
     const from = editor.offsetToPos(match.index!);
     const to = editor.offsetToPos(match.index! + match[0].length);
@@ -41,7 +41,7 @@ export const openReminderEditorAtCursor = (plugin: ObsidianNotifierPlugin): void
 
   for (const match of line.matchAll(REMINDER_REGEXP)) {
     const date = match[1];
-    const id = Number(match[2]);
+    const id = match[2];
     openReminderEditor(plugin, id, date);
     return;
   }
