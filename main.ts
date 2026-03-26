@@ -2,7 +2,7 @@ import { Plugin } from "obsidian";
 import { DEFAULT_SETTINGS } from "consts";
 import { registerCommands } from "commands";
 import { buildReminderWidgetExtension } from "reminderWidget";
-import { buildHoverLineExtension } from "quickReminderExtension";
+import { buildHoverLineExtension } from "inlineActionWidget";
 import { Settings } from "settings";
 import "flatpickr/dist/flatpickr.min.css";
 
@@ -13,7 +13,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
     await this.loadSettings();
     this.addSettingTab(new Settings(this.app, this));
     this.registerEditorExtension(buildReminderWidgetExtension(this));
-    this.registerEditorExtension(buildHoverLineExtension(this));
+    if (this.settings.inlineActions) this.registerEditorExtension(buildHoverLineExtension(this));
 
     registerCommands(this);
   }

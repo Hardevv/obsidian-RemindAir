@@ -56,6 +56,7 @@ export const removeReminderFormLine = (plugin: ObsidianNotifierPlugin, lineNumbe
   editor.setLine(lineNumber, line);
 };
 
+/** for `hours` you can use negative numbers to decrease hours */
 export const addHoursToReminder = (plugin: ObsidianNotifierPlugin, lineNumber: number, hours: number) => {
   const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
   if (!editor) return;
