@@ -1,6 +1,7 @@
 import { PLUGIN_NAME } from "consts";
 import flatpickr from "flatpickr";
 import { App, Modal } from "obsidian";
+import { toLocalDateTimeValue } from "utils";
 
 export class DateTimePicker extends Modal {
   onSubmit: (date: string) => void;
@@ -121,13 +122,3 @@ export class DateTimePicker extends Modal {
     this.contentEl.empty();
   }
 }
-
-const toLocalDateTimeValue = (date: Date): string => {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const h = pad(date.getHours());
-  const min = pad(date.getMinutes());
-  return `${y}-${m}-${d}T${h}:${min}`;
-};

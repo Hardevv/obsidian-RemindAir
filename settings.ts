@@ -53,5 +53,27 @@ export class Settings extends PluginSettingTab {
           new Notice(`Removed ${totalRemoved} reminder(s) from ${files.length} file(s).`);
         });
       });
+
+    new Setting(containerEl)
+      .setName("Inline actions")
+      .setDesc(
+        "Inline actions - add one or reduce one hour form hovered line, add new reminder to hovered line. You can hover any line in markdown editor to see available actions. This is an alternative for commands that works on hovered line instead of line on cursor.",
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.inlineActions).onChange(async (value) => {
+          this.plugin.settings.inlineActions = value;
+          await this.plugin.saveSettings();
+          const pluginId = this.plugin.manifest.id;
+
+          // ugly plugin reload
+          const app = this.plugin.app as any;
+          await app.plugins.disablePlugin(pluginId);
+          await app.plugins.enablePlugin(pluginId);
+          setTimeout(() => {
+            app.setting.open();
+            app.setting.openTabById(pluginId);
+          }, 0);
+        }),
+      );
   }
 }
