@@ -102,8 +102,10 @@
   gap: 5px;
   margin: 10px;
   z-index: 1000;
+  position: absolute;
   height: 22px;
-  position: relative;
+  top: calc(-22px / 2);
+  right: 0;
   opacity: 0.5;
   transition: opacity 350ms ease;
 }
@@ -146,12 +148,7 @@
   transform: translateY(-50%) translateX(0);
 }
 
-.hidden {
-  display: none !important;
-}
-
-.test-test {
-  background-color: red !important;
-  width: 10px;
-  height: 10px;
+.obsidian-notifier_inline-button-text {
+  font-size: 12px;
+  padding: 0 4px;
 }

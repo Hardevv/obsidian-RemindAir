@@ -2,6 +2,7 @@ import { REMINDER_REGEXP } from "consts";
 import { DateTimePicker } from "datetimePickerModal";
 import ObsidianNotifierPlugin from "main";
 import { Editor, MarkdownView } from "obsidian";
+import { toLocalDateTimeValue } from "utils";
 
 export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: string, currentDate: string): void => {
   new DateTimePicker(
@@ -45,4 +46,26 @@ export const openReminderEditorAtCursor = (plugin: ObsidianNotifierPlugin): void
     openReminderEditor(plugin, id, date);
     return;
   }
+};
+
+export const removeReminderFormLine = (plugin: ObsidianNotifierPlugin, lineNumber: number) => {
+  const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+  if (!editor) return;
+
+  const line = editor.getLine(lineNumber).replace(REMINDER_REGEXP, "").trim();
+  editor.setLine(lineNumber, line);
+};
+
+export const addHoursToReminder = (plugin: ObsidianNotifierPlugin, lineNumber: number, hours: number) => {
+  const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
+  if (!editor) return;
+  const line = editor.getLine(lineNumber);
+  const [, date, id] = line.matchAll(REMINDER_REGEXP).next().value ?? [];
+  const newDate = new Date(date);
+  newDate.setHours(newDate.getHours() + hours);
+
+  const newReminderText = `🔔 ${toLocalDateTimeValue(newDate)} ^r-${id}`;
+
+  const newLine = editor.getLine(lineNumber).replace(REMINDER_REGEXP, newReminderText).trim();
+  editor.setLine(lineNumber, newLine);
 };
