@@ -1,6 +1,6 @@
 import { PLUGIN_NAME } from "consts";
 import flatpickr from "flatpickr";
-import { App, Modal } from "obsidian";
+import { App, Modal, setIcon } from "obsidian";
 import { toLocalDateTimeValue } from "utils";
 
 export class DateTimePicker extends Modal {
@@ -9,22 +9,23 @@ export class DateTimePicker extends Modal {
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   date: string | Date | null = null;
+  private onDelete?: (() => void) | null;
   private viewportCleanup: (() => void) | null = null;
 
-  constructor(app: App, onSubmit: (date: string) => void, date: string | Date | null = null) {
+  constructor(app: App, onSubmit: (date: string) => void, date: string | Date | null = null, onDelete: (() => void) | null = null) {
     super(app);
     this.onSubmit = onSubmit;
     this.modalEl.addClass(`${PLUGIN_NAME}-date-time-picker-modal`);
     this.titleEl.textContent = "Select reminder date & time";
     this.date = date;
+    this.onDelete = onDelete || null;
   }
 
   onOpen(): void {
     const { contentEl } = this;
     const input = contentEl.createEl("input", { cls: `${PLUGIN_NAME}-date-time-input` });
     const parsedInitialDate = this.date ? new Date(this.date) : new Date();
-    const defaultDateTime =
-      parsedInitialDate && !Number.isNaN(parsedInitialDate.getTime()) ? parsedInitialDate : new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
+    const defaultDateTime = parsedInitialDate || new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
 
     const fp = flatpickr(input, {
       enableTime: true,
@@ -73,10 +74,21 @@ export class DateTimePicker extends Modal {
       submitSelectedDate();
     });
 
-    const btn = contentEl.createEl("button", { text: "Confirm", cls: `${PLUGIN_NAME}-datetime-picker-confirm-button` });
-    btn.addEventListener("click", () => {
+    const modalActionsWrapper = contentEl.createDiv({ cls: `${PLUGIN_NAME}_date-time-picker-modal-actions` });
+
+    const confirmBtn = modalActionsWrapper.createEl("button", { text: "Confirm", cls: `${PLUGIN_NAME}_datetime-picker-modal-confirm-button` });
+    confirmBtn.addEventListener("click", () => {
       submitSelectedDate();
     });
+
+    if (this.onDelete) {
+      const deleteBtn = modalActionsWrapper.createEl("button", { cls: `${PLUGIN_NAME}_datetime-picker-modal-trash-button` });
+      setIcon(deleteBtn, "trash");
+      deleteBtn.addEventListener("click", () => {
+        this.onDelete?.();
+        this.close();
+      });
+    }
 
     this.setupMobileKeyboardHandling();
   }

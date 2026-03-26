@@ -27,17 +27,32 @@
   height: 0 !important;
 }
 
-.obsidian-notifier-datetime-picker-confirm-button {
+.obsidian-notifier_date-time-picker-modal-actions {
+  display: flex;
+  width: 100%;
+  padding-top: 15px !important;
+  gap: 15px;
+  align-items: center;
+  justify-content: center;
+}
+
+.obsidian-notifier_datetime-picker-modal-confirm-button {
   background-color: var(--interactive-accent) !important;
   color: var(--text-on-accent);
   font-size: 16px;
-  margin-top: 15px !important;
   letter-spacing: 1px;
   font-weight: 600;
   border: none;
   padding: 22px 44px;
   border-radius: 8px;
   cursor: pointer;
+}
+.obsidian-notifier_datetime-picker-modal-trash-button {
+  border-radius: 50%;
+  width: 45px;
+  height: 45px;
+  justify-self: flex-end;
+  align-self: flex-end;
 }
 
 .obsidian-notifier-date-time-picker-modal .flatpickr-day:focus-visible,
@@ -51,13 +66,46 @@
   border: var(--interactive-accent) !important;
 }
 
+/* Widget */
 .obsidian-notifier-reminder-widget {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35em;
   cursor: pointer;
   border-radius: 6px;
-  padding: 0.05em 0.2em;
+  padding: 1px 0 1px 9px;
+  background-color: var(--color-base-20);
+  border: 1px solid var(--color-base-25);
+  transition:
+    opacity,
+    background-color 500ms ease;
+}
+.obsidian-notifier-reminder-widget:hover,
+.obsidian-notifier-reminder-widget-past:hover {
+  background-color: var(--color-base-10);
+  opacity: 1;
+  text-decoration: none;
+}
+.obsidian-notifier-reminder-widget-past {
+  transition:
+    opacity,
+    background-color 500ms ease;
+  opacity: 0.75;
+  position: relative;
+}
+.obsidian-notifier-reminder-widget-past::after {
+  content: "";
+  position: absolute;
+  width: 80%;
+  height: 1px;
+  background-color: var(--color-base-100);
+  transform: translateY(50%);
+  margin-top: -1px;
+  transition: width 350ms ease;
+}
+.obsidian-notifier-reminder-widget-past:hover::after {
+  width: 0;
 }
 
 .obsidian-notifier-reminder-widget-date {
@@ -68,13 +116,13 @@
   background: transparent !important;
   box-shadow: none !important;
   border: none;
-  padding: 0 8px;
+  padding: 1px 9px 1px 0;
   cursor: pointer;
   height: 14px;
 }
 
 .obsidian-notifier-reminder-widget-delete-btn svg {
-  height: 14px;
+  height: 12px;
   width: 14px;
 }
 
@@ -111,6 +159,10 @@
 }
 .obsidian-notifier_inline-actions-wrapper:hover {
   opacity: 1;
+}
+
+.is-mobile .obsidian-notifier_inline-actions-wrapper {
+  display: none;
 }
 
 .obsidian-notifier_inline-button-action {

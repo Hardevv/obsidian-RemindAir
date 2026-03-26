@@ -55,7 +55,9 @@ class ReminderWidget extends WidgetType {
     wrap.setAttr("role", "button");
     wrap.setAttr("aria-label", `Edit reminder | Reminder ID: r-${this.reminderId}`);
     const { year, month, day, hours, minutes } = this.formatDate(this.date);
-    const dateText = `${year ?? ""} ${month ?? ""} ${day} ${hours}:${minutes}`;
+    const dateText = `${year ?? ""} ${month ?? ""} ${day} ${hours}:${minutes}`.trim();
+    const isInPast = new Date(this.date).getTime() < Date.now();
+    if (isInPast) wrap.addClass(`${PLUGIN_NAME}-reminder-widget-past`);
 
     wrap.createSpan({ text: "🔔", cls: `${PLUGIN_NAME}-reminder-widget-emoji` });
     wrap.createSpan({ text: dateText, cls: `${PLUGIN_NAME}-reminder-widget-date` });
