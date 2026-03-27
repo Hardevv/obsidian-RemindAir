@@ -1,3 +1,4 @@
+import { StateEffect } from "@codemirror/state";
 import { EditorView, ViewPlugin, Decoration, DecorationSet, WidgetType } from "@codemirror/view";
 import { setReminderFunc } from "commands";
 import { PLUGIN_NAME } from "consts";
@@ -121,7 +122,9 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
           this.decorations = Decoration.set([Decoration.widget({ widget: new HoverWidget(plugin, this.hoveredLine), side: 1 }).range(to)]);
         }
 
-        this.view.dispatch({ effects: [] }); // trigger the update
+        // Force update
+        const updateEffect = StateEffect.define<null>();
+        this.view.dispatch({ effects: updateEffect.of(null) });
       }
 
       destroy() {
