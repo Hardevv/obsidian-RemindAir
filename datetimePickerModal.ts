@@ -1,6 +1,7 @@
 import { PLUGIN_NAME } from "consts";
 import flatpickr from "flatpickr";
-import { App, Modal, setIcon } from "obsidian";
+import type ObsidianNotifierPlugin from "main";
+import { Modal, setIcon } from "obsidian";
 import { toLocalDateTimeValue } from "utils";
 
 export class DateTimePicker extends Modal {
@@ -9,16 +10,23 @@ export class DateTimePicker extends Modal {
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   date: string | Date | null = null;
+  plugin: ObsidianNotifierPlugin;
   private onDelete?: (() => void) | null;
   private viewportCleanup: (() => void) | null = null;
 
-  constructor(app: App, onSubmit: (date: string) => void, date: string | Date | null = null, onDelete: (() => void) | null = null) {
-    super(app);
+  constructor(
+    plugin: ObsidianNotifierPlugin,
+    onSubmit: (date: string) => void,
+    date: string | Date | null = null,
+    onDelete: (() => void) | null = null,
+  ) {
+    super(plugin.app);
     this.onSubmit = onSubmit;
     this.modalEl.addClass(`${PLUGIN_NAME}-date-time-picker-modal`);
     this.titleEl.textContent = "Select reminder date & time";
     this.date = date;
     this.onDelete = onDelete || null;
+    this.plugin = plugin;
   }
 
   onOpen(): void {
@@ -26,10 +34,11 @@ export class DateTimePicker extends Modal {
     const input = contentEl.createEl("input", { cls: `${PLUGIN_NAME}-date-time-input` });
     const parsedInitialDate = this.date ? new Date(this.date) : new Date();
     const defaultDateTime = parsedInitialDate || new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
+    const time_24hr = this.plugin.settings.timeFormat === "24h";
 
     const fp = flatpickr(input, {
+      time_24hr,
       enableTime: true,
-      time_24hr: true,
       inline: true, // visible calendar
       defaultDate: defaultDateTime,
       dateFormat: "Y-m-d H:i",

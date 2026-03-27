@@ -6,7 +6,7 @@ import { MarkdownView } from "obsidian";
 import { getRandomIdSuffix } from "utils";
 
 export const setReminderFunc = (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
-  new DateTimePicker(plugin.app, async (date) => {
+  new DateTimePicker(plugin, async (date) => {
     const view = plugin.app.workspace.getActiveViewOfType(MarkdownView);
     const editor = view?.editor;
     if (!editor) return;

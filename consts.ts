@@ -4,4 +4,5 @@ export const ID_LETTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ
 export const DEFAULT_SETTINGS = {
   idCounter: 0,
   inlineActions: true,
+  timeFormat: "24h",
 };

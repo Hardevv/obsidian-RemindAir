@@ -7,7 +7,7 @@ import { toLocalDateTimeValue } from "utils";
 export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: string, currentDate: string): void => {
   const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
   new DateTimePicker(
-    plugin.app,
+    plugin,
     async (date) => {
       if (!editor) return;
 

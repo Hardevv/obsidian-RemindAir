@@ -7,16 +7,18 @@ import { editorLivePreviewField, MarkdownView, setIcon } from "obsidian";
 import { getDateObjectFromReminderString, isDateEqual } from "utils";
 
 class ReminderWidget extends WidgetType {
+  private timeFormat: string;
   constructor(
     private readonly plugin: ObsidianNotifierPlugin,
     private readonly reminderId: string,
     private readonly date: string,
   ) {
     super();
+    this.timeFormat = plugin.settings.timeFormat;
   }
 
   eq(other: ReminderWidget): boolean {
-    return this.reminderId === other.reminderId && this.date === other.date;
+    return this.reminderId === other.reminderId && this.date === other.date && this.timeFormat === other.timeFormat;
   }
 
   formatDate(date: string) {
@@ -40,12 +42,17 @@ class ReminderWidget extends WidgetType {
         ? dateObj.toLocaleString("default", { weekday: "short" })
         : String(dateObj.getDate()).padStart(2, "0");
 
+    const [h, m, dayPeriod] = dateObj.toLocaleString("en-US", { minute: "2-digit", hour: "2-digit", hour12: true }).split(/[: ]/g);
+    const is24hFormat = this.plugin.settings.timeFormat === "24h";
+    const hours = is24hFormat ? String(dateObj.getHours()).padStart(2, "0") : h;
+    const minutes = is24hFormat ? String(dateObj.getMinutes()).padStart(2, "0") : `${m} ${dayPeriod}`;
+
     return {
       year: (isCurrentWeek && isInFuture) || isToday ? null : dateObj.getFullYear(),
       month: (isCurrentWeek && isInFuture) || isToday ? null : dateObj.toLocaleString("default", { month: "short" }),
       day,
-      hours: String(dateObj.getHours()).padStart(2, "0"),
-      minutes: String(dateObj.getMinutes()).padStart(2, "0"),
+      hours,
+      minutes,
     };
   }
 
@@ -129,7 +136,7 @@ export const buildReminderWidgetExtension = (plugin: ObsidianNotifierPlugin) =>
       }
 
       update(update: ViewUpdate): void {
-        if (!update.docChanged && !update.viewportChanged && !update.selectionSet) return;
+        if (!update.docChanged && !update.viewportChanged && !update.selectionSet && !update.focusChanged) return;
         this.decorations = buildReminderDecorations(update.view, plugin);
       }
     },

@@ -66,6 +66,12 @@ export class Settings extends PluginSettingTab {
           const pluginId = this.plugin.manifest.id;
 
           // ugly plugin reload
+          // TODO: consider making it the same way as it's done for time format
+          // this.timeFormat = plugin.settings.timeFormat;
+          // update(update: ViewUpdate): void {
+          //   if (!update.docChanged && !update.viewportChanged && !update.selectionSet && !update.focusChanged) return;
+          //   this.decorations = buildReminderDecorations(update.view, plugin);
+          // }
           const app = this.plugin.app as any;
           await app.plugins.disablePlugin(pluginId);
           await app.plugins.enablePlugin(pluginId);
@@ -75,5 +81,19 @@ export class Settings extends PluginSettingTab {
           }, 0);
         }),
       );
+
+    new Setting(containerEl)
+      .setName("Time format in date time picker")
+      .setDesc("You can choose if you want to see the time int 24h format (e.g. 18:00) or 12h format with AM/PM (e.g. 6:00 PM).")
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("24h", "24h")
+          .addOption("12h", "12h")
+          .setValue(this.plugin.settings.timeFormat)
+          .onChange(async (value) => {
+            this.plugin.settings.timeFormat = value as "24h" | "12h";
+            await this.plugin.saveSettings();
+          });
+      });
   }
 }
