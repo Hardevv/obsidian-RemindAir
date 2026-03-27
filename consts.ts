@@ -5,4 +5,5 @@ export const DEFAULT_SETTINGS = {
   idCounter: 0,
   inlineActions: true,
   timeFormat: "24h",
+  startWeekFrom: "monday",
 };

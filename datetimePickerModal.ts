@@ -35,6 +35,7 @@ export class DateTimePicker extends Modal {
     const parsedInitialDate = this.date ? new Date(this.date) : new Date();
     const defaultDateTime = parsedInitialDate || new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
     const time_24hr = this.plugin.settings.timeFormat === "24h";
+    const firstDayOfWeek = this.plugin.settings.startWeekFrom == "monday" ? 1 : 0;
 
     const fp = flatpickr(input, {
       time_24hr,
@@ -43,7 +44,7 @@ export class DateTimePicker extends Modal {
       defaultDate: defaultDateTime,
       dateFormat: "Y-m-d H:i",
       allowInput: true,
-      locale: { firstDayOfWeek: 1 },
+      locale: { firstDayOfWeek },
       onDayCreate(_, __, ___, dayElem) {
         const day = dayElem.dateObj.getDay();
         if (day === 0 || day === 6) dayElem.classList.add("weekend");

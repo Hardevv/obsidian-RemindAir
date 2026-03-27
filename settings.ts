@@ -95,5 +95,19 @@ export class Settings extends PluginSettingTab {
             await this.plugin.saveSettings();
           });
       });
+
+    new Setting(containerEl)
+      .setName("Start week from")
+      .setDesc("You can choose your preferred start of the week in the date time picker.")
+      .addDropdown((dropdown) => {
+        dropdown
+          .addOption("monday", "monday")
+          .addOption("sunday", "sunday")
+          .setValue(this.plugin.settings.startWeekFrom)
+          .onChange(async (value) => {
+            this.plugin.settings.startWeekFrom = value as "monday" | "sunday";
+            await this.plugin.saveSettings();
+          });
+      });
   }
 }
