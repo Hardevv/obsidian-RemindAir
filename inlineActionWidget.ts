@@ -1,10 +1,11 @@
 import { StateEffect } from "@codemirror/state";
-import { EditorView, ViewPlugin, Decoration, DecorationSet, WidgetType } from "@codemirror/view";
+import { EditorView, ViewPlugin, Decoration, DecorationSet, WidgetType, ViewUpdate } from "@codemirror/view";
 import { setReminderFunc } from "commands";
 import { PLUGIN_NAME } from "consts";
 import { addHoursToReminder } from "core";
 import ObsidianNotifierPlugin from "main";
 import { setIcon } from "obsidian";
+import { getClampedPosition } from "utils";
 
 interface HoveredLine {
   lineNumber: number;
@@ -86,6 +87,8 @@ class HoverWidget extends WidgetType {
   }
 }
 
+const refreshInlineActionsEffect = StateEffect.define<null>();
+
 export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
   ViewPlugin.fromClass(
     class {
@@ -100,13 +103,11 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
       onMouseMove = (e: MouseEvent) => {
         const pos = this.view.posAtCoords({ x: e.clientX, y: e.clientY });
         if (pos === null) return;
-        const { number: lineNumber, text, from, to } = this.view.state.doc.lineAt(pos);
 
+        const { number: lineNumber, text, from, to } = this.view.state.doc.lineAt(pos);
         if (lineNumber === this.hoveredLine?.lineNumber) return;
 
-        if (text.contains("🔔 ")) this.hoveredLine = { lineNumber, hasReminder: true, from, to };
-        else this.hoveredLine = { lineNumber, hasReminder: false, from, to };
-
+        this.hoveredLine = { lineNumber, hasReminder: text.includes("🔔 "), from, to };
         this.updateDecorations();
       };
 
@@ -115,16 +116,35 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
         this.updateDecorations();
       };
 
-      updateDecorations() {
-        if (this.hoveredLine === null) this.decorations = Decoration.none;
-        else {
-          const { hasReminder, to } = this.hoveredLine;
-          this.decorations = Decoration.set([Decoration.widget({ widget: new HoverWidget(plugin, this.hoveredLine), side: 1 }).range(to)]);
+      update(update: ViewUpdate) {
+        if (update.docChanged && this.hoveredLine) {
+          const doc = update.state.doc;
+          const mappedFrom = update.changes.mapPos(this.hoveredLine.from, 1);
+          const safePos = getClampedPosition(mappedFrom, doc.length);
+          const line = doc.lineAt(safePos);
+
+          this.hoveredLine = {
+            lineNumber: line.number,
+            from: line.from,
+            to: line.to,
+            hasReminder: line.text.includes("🔔 "),
+          };
         }
 
-        // Force update
-        const updateEffect = StateEffect.define<null>();
-        this.view.dispatch({ effects: updateEffect.of(null) });
+        if (update.docChanged || update.viewportChanged || update.focusChanged || update.selectionSet) {
+          this.updateDecorations(false);
+        }
+      }
+
+      updateDecorations(shouldDispatch = true) {
+        if (this.hoveredLine === null) this.decorations = Decoration.none;
+        else {
+          const docLength = this.view.state.doc.length;
+          const safeTo = getClampedPosition(this.hoveredLine.to, docLength);
+          this.decorations = Decoration.set([Decoration.widget({ widget: new HoverWidget(plugin, this.hoveredLine), side: 1 }).range(safeTo)]);
+        }
+
+        if (shouldDispatch) this.view.dispatch({ effects: refreshInlineActionsEffect.of(null) });
       }
 
       destroy() {
