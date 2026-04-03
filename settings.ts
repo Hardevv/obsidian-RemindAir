@@ -1,12 +1,45 @@
 import { REMINDER_REGEXP } from "consts";
 import ObsidianNotifierPlugin from "main";
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
+
+class ConfirmModal extends Modal {
+  constructor(
+    plugin: ObsidianNotifierPlugin,
+    private readonly onConfirm: () => Promise<void> | void,
+  ) {
+    super(plugin.app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    this.setTitle("Remove all reminders?");
+    this.setContent("This action will remove all reminders from your vault and backend. This cannot be undone.");
+
+    const btnWrapper = contentEl.createDiv({ cls: "modal-button-container" });
+    const confirmRemove = btnWrapper.createEl("button", { text: "Remove all reminders", cls: "mod-warning" });
+    confirmRemove.addEventListener("click", async () => {
+      await this.onConfirm();
+      this.close();
+    });
+
+    const cancel = btnWrapper.createEl("button", { text: "Cancel" });
+    cancel.addEventListener("click", () => {
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
 
 export class Settings extends PluginSettingTab {
   plugin: ObsidianNotifierPlugin;
 
-  constructor(app: App, plugin: ObsidianNotifierPlugin) {
-    super(app, plugin);
+  constructor(plugin: ObsidianNotifierPlugin) {
+    super(plugin.app, plugin);
     this.plugin = plugin;
   }
 
@@ -29,28 +62,25 @@ export class Settings extends PluginSettingTab {
       )
       .addButton((btn) => {
         btn.setButtonText("Remove all reminders").onClick(async () => {
-          const files = this.app.vault.getMarkdownFiles();
-          let totalRemoved = 0;
+          new ConfirmModal(this.plugin, async () => {
+            const files = this.app.vault.getMarkdownFiles();
+            let totalRemoved = 0;
 
-          for (const file of files) {
-            const content = await this.app.vault.read(file);
-            const matches = content.match(REMINDER_REGEXP);
-            if (!matches) continue;
+            for (const file of files) {
+              const content = await this.app.vault.read(file);
+              const matches = content.match(REMINDER_REGEXP);
+              if (!matches) continue;
 
-            totalRemoved += matches.length;
-            const cleaned = content.replace(REMINDER_REGEXP, "").replace(/[ \t]+$/gm, "");
-            await this.app.vault.modify(file, cleaned);
-          }
-
-          this.plugin.settings.idCounter = 0;
-          await this.plugin.saveSettings();
-          reminderCounter.innerHTML = `You've created <strong>${this.plugin.settings.idCounter} reminders</strong> so far, <br>`;
-          reminderCounter.appendChild(subtitle);
-
-          //TODO: in case of you add more endpoint in future make a service here and option to override the port
-          await fetch("http://localhost:3333/reminders", { method: "DELETE" });
-
-          new Notice(`Removed ${totalRemoved} reminder(s) from ${files.length} file(s).`);
+              totalRemoved += matches.length;
+              const cleaned = content.replace(REMINDER_REGEXP, "").replace(/[ \t]+$/gm, "");
+              await this.app.vault.modify(file, cleaned);
+              await this.plugin.saveSettings();
+              reminderCounter.innerHTML = `You've created <strong>${this.plugin.settings.idCounter} reminders</strong> so far, <br>`;
+              reminderCounter.appendChild(subtitle);
+            }
+            this.plugin.settings.lastSafetyCleanup = Date.now();
+            new Notice(`Removed ${totalRemoved} reminder(s) from ${files.length} file(s).`);
+          }).open();
         });
       });
 

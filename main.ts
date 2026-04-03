@@ -11,7 +11,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
 
   async onload(): Promise<void> {
     await this.loadSettings();
-    this.addSettingTab(new Settings(this.app, this));
+    this.addSettingTab(new Settings(this));
     this.registerEditorExtension(buildReminderWidgetExtension(this));
     if (this.settings.inlineActions) this.registerEditorExtension(buildHoverLineExtension(this));
 
