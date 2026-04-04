@@ -153,16 +153,12 @@
   position: absolute;
   height: 22px;
   top: calc(-22px / 2);
-  right: 0;
+  right: -25px;
   opacity: 0.5;
   transition: opacity 350ms ease;
 }
 .obsidian-notifier_inline-actions-wrapper:hover {
   opacity: 1;
-}
-
-.is-mobile .obsidian-notifier_inline-actions-wrapper {
-  display: none;
 }
 
 .obsidian-notifier_inline-button-action {

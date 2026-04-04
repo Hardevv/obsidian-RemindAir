@@ -4,7 +4,7 @@ import { setReminderFunc } from "commands";
 import { PLUGIN_NAME } from "consts";
 import { addHoursToReminder } from "core";
 import ObsidianNotifierPlugin from "main";
-import { setIcon } from "obsidian";
+import { Platform, setIcon } from "obsidian";
 import { getClampedPosition } from "utils";
 
 interface HoveredLine {
@@ -52,6 +52,7 @@ const actions = {
 
 const createActionButton = (icon: string, cb: () => void, text?: string) => {
   const btn = createEl("button", { cls: classNames.actionButton });
+  btn.addEventListener("pointerdown", cb);
   btn.addEventListener("click", cb);
   setIcon(btn, icon);
   if (text) btn.appendChild(createEl("span", { text, cls: `${PLUGIN_NAME}_inline-button-text` }));
@@ -94,8 +95,10 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
     class {
       decorations: DecorationSet = Decoration.none;
       hoveredLine: HoveredLine | null = null;
+      private readonly isMobile = Platform.isMobile;
 
       constructor(private view: EditorView) {
+        if (this.isMobile) return;
         this.view.dom.addEventListener("mousemove", this.onMouseMove);
         this.view.dom.addEventListener("mouseleave", this.onMouseLeave);
       }
@@ -117,22 +120,27 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
       };
 
       update(update: ViewUpdate) {
-        if (update.docChanged && this.hoveredLine) {
-          const doc = update.state.doc;
-          const mappedFrom = update.changes.mapPos(this.hoveredLine.from, 1);
-          const safePos = getClampedPosition(mappedFrom, doc.length);
-          const line = doc.lineAt(safePos);
+        const doc = update.state.doc;
+        const mappedFrom = this.hoveredLine?.from ? update.changes.mapPos(this.hoveredLine.from, 1) : 0;
+        const oldPos = update.startState.selection.main.head;
+        const newPos = update.state.selection.main.head;
+        const safePos = getClampedPosition(this.isMobile ? newPos : mappedFrom, doc.length);
+        const line = doc.lineAt(safePos);
 
+        const setHoveredLine = () => {
           this.hoveredLine = {
             lineNumber: line.number,
             from: line.from,
             to: line.to,
             hasReminder: line.text.includes("🔔 "),
           };
-        }
+        };
+
+        if (this.isMobile && oldPos !== newPos) setHoveredLine();
+        if (update.docChanged && this.hoveredLine) setHoveredLine();
 
         if (update.docChanged || update.viewportChanged || update.focusChanged || update.selectionSet) {
-          this.updateDecorations(false);
+          this.updateDecorations(false); // do not dispatch inside update() because update is already being dispatched.
         }
       }
 
@@ -148,6 +156,7 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
       }
 
       destroy() {
+        if (this.isMobile) return;
         this.view.dom.removeEventListener("mousemove", this.onMouseMove);
         this.view.dom.removeEventListener("mouseleave", this.onMouseLeave);
       }
