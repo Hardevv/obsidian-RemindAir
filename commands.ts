@@ -1,5 +1,5 @@
 import { PLUGIN_NAME } from "consts";
-import { openReminderEditorAtCursor, removeReminderFormLine } from "core";
+import { openReminderEditorAtCursor } from "core";
 import { DateTimePicker } from "datetimePickerModal";
 import ObsidianNotifierPlugin from "main";
 import { MarkdownView } from "obsidian";

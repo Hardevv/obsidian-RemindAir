@@ -1,4 +1,3 @@
-import { StateEffect } from "@codemirror/state";
 import { EditorView, ViewPlugin, Decoration, DecorationSet, WidgetType, ViewUpdate } from "@codemirror/view";
 import { setReminderFunc } from "commands";
 import { PLUGIN_NAME } from "consts";
@@ -22,7 +21,6 @@ const classNames = {
 const actions = {
   hasReminder: [
     {
-      actionId: `${PLUGIN_NAME}_add1h`,
       icon: "clock",
       text: "+1h",
       cb: (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
@@ -30,7 +28,6 @@ const actions = {
       },
     },
     {
-      actionId: `${PLUGIN_NAME}_add1h`,
       icon: "clock",
       text: "-1h",
       cb: (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
@@ -40,7 +37,6 @@ const actions = {
   ],
   noReminder: [
     {
-      actionId: `${PLUGIN_NAME}_add-reminder`,
       icon: "bell-plus",
       text: undefined,
       cb: (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
@@ -64,11 +60,11 @@ const inlineActions = (plugin: ObsidianNotifierPlugin, hoveredLine: HoveredLine 
   if (!hoveredLine) return wrapper;
 
   if (hoveredLine.hasReminder)
-    actions.hasReminder.forEach(({ actionId, icon, text, cb }) => {
+    actions.hasReminder.forEach(({ icon, text, cb }) => {
       wrapper.appendChild(createActionButton(icon, () => cb(plugin, hoveredLine?.lineNumber - 1), text));
     });
   else
-    actions.noReminder.forEach(({ actionId, icon, text, cb }) => {
+    actions.noReminder.forEach(({ icon, text, cb }) => {
       wrapper.appendChild(createActionButton(icon, () => cb(plugin, hoveredLine?.lineNumber - 1), text));
     });
 
@@ -87,8 +83,6 @@ class HoverWidget extends WidgetType {
     return inlineActions(this.plugin, this.hoveredLine);
   }
 }
-
-const refreshInlineActionsEffect = StateEffect.define<null>();
 
 export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
   ViewPlugin.fromClass(
@@ -152,7 +146,7 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
           this.decorations = Decoration.set([Decoration.widget({ widget: new HoverWidget(plugin, this.hoveredLine), side: 1 }).range(safeTo)]);
         }
 
-        if (shouldDispatch) this.view.dispatch({ effects: refreshInlineActionsEffect.of(null) });
+        if (shouldDispatch) this.view.dispatch({});
       }
 
       destroy() {

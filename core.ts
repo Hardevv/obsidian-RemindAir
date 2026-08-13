@@ -11,8 +11,7 @@ export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: s
     async (date) => {
       if (!editor) return;
 
-      const wasUpdated = replaceReminderById(editor, reminderId, date);
-      if (!wasUpdated) return;
+      replaceReminderById(editor, reminderId, date);
     },
     currentDate,
     () => {
@@ -51,14 +50,6 @@ export const openReminderEditorAtCursor = (plugin: ObsidianNotifierPlugin): void
     openReminderEditor(plugin, id, date);
     return;
   }
-};
-
-export const removeReminderFormLine = (plugin: ObsidianNotifierPlugin, lineNumber: number) => {
-  const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
-  if (!editor) return;
-
-  const line = editor.getLine(lineNumber).replace(REMINDER_REGEXP, "").trim();
-  editor.setLine(lineNumber, line);
 };
 
 /** for `hours` you can use negative numbers to decrease hours */

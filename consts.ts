@@ -6,7 +6,6 @@ export const DEFAULT_SETTINGS: PluginSettings = {
   inlineActions: true,
   timeFormat: "24h",
   startWeekFrom: "monday",
-  lastSafetyCleanup: null,
 };
 
 interface PluginSettings {
@@ -14,6 +13,4 @@ interface PluginSettings {
   inlineActions: boolean;
   timeFormat: "24h" | "12h";
   startWeekFrom: "monday" | "sunday";
-  /** date .getTime() */
-  lastSafetyCleanup: number | null;
 }

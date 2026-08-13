@@ -174,28 +174,6 @@
   justify-content: center;
 }
 
-.obsidian-notifier_inline-action-buttons {
-  position: absolute;
-  right: 100%;
-  top: 50%;
-  transform: translateY(-50%) translateX(4px);
-  display: inline-flex;
-  gap: 6px;
-  padding-right: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
-}
-
-.obsidian-notifier_inline-actions-wrapper:hover .obsidian-notifier_inline-action-buttons,
-.obsidian-notifier_inline-actions-wrapper:focus-within .obsidian-notifier_inline-action-buttons {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(-50%) translateX(0);
-}
-
 .obsidian-notifier_inline-button-text {
   font-size: 12px;
   padding: 0 4px;

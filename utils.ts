@@ -1,11 +1,8 @@
 import { ID_LETTERS } from "consts";
 
 export const getDateObjectFromReminderString = (reminderString: string): Date | null => {
-  try {
-    return new Date(reminderString);
-  } catch {
-    return null;
-  }
+  const date = new Date(reminderString);
+  return isNaN(date.getTime()) ? null : date;
 };
 
 /** if `shallow` passed  it only checks the date */

@@ -1,7 +1,7 @@
 {
   "name": "obsidian-notifier",
   "version": "0.1.0",
-  "description": "Plugin for Obsidian that will let you set a reminder notification for any line, and it will be sent to your discord chanel with a privacy configuration options.",
+  "description": "Obsidian plugin that lets you set a reminder notification for any line in your notes.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

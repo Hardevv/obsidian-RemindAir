@@ -6,7 +6,6 @@ import { toLocalDateTimeValue } from "utils";
 
 export class DateTimePicker extends Modal {
   onSubmit: (date: string) => void;
-  _selectedDate: string | null = null;
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   date: string | Date | null = null;
@@ -32,8 +31,7 @@ export class DateTimePicker extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     const input = contentEl.createEl("input", { cls: `${PLUGIN_NAME}-date-time-input` });
-    const parsedInitialDate = this.date ? new Date(this.date) : new Date();
-    const defaultDateTime = parsedInitialDate || new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
+    const defaultDateTime = this.date ? new Date(this.date) : new Date(Date.now() + 15 * 60 * 1000); // current time + 15 minutes
     const time_24hr = this.plugin.settings.timeFormat === "24h";
     const firstDayOfWeek = this.plugin.settings.startWeekFrom == "monday" ? 1 : 0;
 

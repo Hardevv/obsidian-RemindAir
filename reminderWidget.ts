@@ -110,7 +110,7 @@ const buildReminderDecorations = (view: EditorView, plugin: ObsidianNotifierPlug
     const text = view.state.doc.sliceString(from, to);
 
     for (const match of text.matchAll(REMINDER_REGEXP)) {
-      const start = from + match.index;
+      const start = from + match.index!;
 
       builder.add(
         start,
