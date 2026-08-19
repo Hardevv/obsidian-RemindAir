@@ -1,5 +1,5 @@
 import { Plugin } from "obsidian";
-import { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, PluginSettings } from "consts";
+import { DEFAULT_SETTINGS, normalizeGCalSettings, PluginSettings } from "consts";
 import { registerCommands } from "commands";
 import { buildReminderWidgetExtension } from "reminderWidget";
 import { buildHoverLineExtension } from "inlineActionWidget";
@@ -23,7 +23,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
     this.settings = {
       ...DEFAULT_SETTINGS,
       ...data,
-      googleCalendar: { ...DEFAULT_GCAL_SETTINGS, ...data?.googleCalendar },
+      googleCalendar: normalizeGCalSettings(data?.googleCalendar),
     };
   }
 

@@ -3,8 +3,6 @@ export const REMINDER_REGEXP = /🔔\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})\s+\^r-(\d
 export const ID_LETTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export interface GCalSettings {
-  clientId: string;
-  clientSecret: string;
   timeZone: string;
   pullCalendars: string;
   pullDays: number;
@@ -15,8 +13,6 @@ export interface GCalSettings {
 }
 
 export const DEFAULT_GCAL_SETTINGS: GCalSettings = {
-  clientId: "",
-  clientSecret: "",
   timeZone: "",
   pullCalendars: "primary",
   pullDays: 60,
@@ -25,6 +21,18 @@ export const DEFAULT_GCAL_SETTINGS: GCalSettings = {
   linkBaseUrl: "",
   taskListName: "@default",
 };
+
+export function normalizeGCalSettings(stored?: Partial<GCalSettings> | null): GCalSettings {
+  return {
+    timeZone: stored?.timeZone ?? DEFAULT_GCAL_SETTINGS.timeZone,
+    pullCalendars: stored?.pullCalendars ?? DEFAULT_GCAL_SETTINGS.pullCalendars,
+    pullDays: stored?.pullDays ?? DEFAULT_GCAL_SETTINGS.pullDays,
+    autoSyncMinutes: stored?.autoSyncMinutes ?? DEFAULT_GCAL_SETTINGS.autoSyncMinutes,
+    addObsidianLink: stored?.addObsidianLink ?? DEFAULT_GCAL_SETTINGS.addObsidianLink,
+    linkBaseUrl: stored?.linkBaseUrl ?? DEFAULT_GCAL_SETTINGS.linkBaseUrl,
+    taskListName: stored?.taskListName ?? DEFAULT_GCAL_SETTINGS.taskListName,
+  };
+}
 
 export const DEFAULT_SETTINGS: PluginSettings = {
   idCounter: 0,

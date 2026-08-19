@@ -12,6 +12,44 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = (process.argv[2] === "production");
 
+function loadEnvFile(file = ".env") {
+  const result = {};
+  if (!fs.existsSync(file)) return result;
+  for (const rawLine of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const separator = line.indexOf("=");
+    if (separator === -1) continue;
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    const quoted =
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")));
+    if (quoted) value = value.slice(1, -1);
+    result[key] = value;
+  }
+  return result;
+}
+
+const fileEnv = loadEnvFile();
+const readEnv = (key) => process.env[key] ?? fileEnv[key] ?? "";
+
+const injectedEnv = {
+  GOOGLE_CLIENT_ID: readEnv("GOOGLE_CLIENT_ID"),
+  GOOGLE_CLIENT_SECRET: readEnv("GOOGLE_CLIENT_SECRET"),
+};
+
+if (!injectedEnv.GOOGLE_CLIENT_ID) {
+  console.warn(
+    "[esbuild] GOOGLE_CLIENT_ID is not set (see .env.example) - Google Calendar sign-in will be unavailable in this build.",
+  );
+}
+
+const define = Object.fromEntries(
+  Object.entries(injectedEnv).map(([key, value]) => [`process.env.${key}`, JSON.stringify(value)]),
+);
+
 const cssInjectPlugin = {
   name: "css-inject",
   setup(build) {
@@ -35,6 +73,7 @@ const context = await esbuild.context({
   },
   entryPoints: ["main.ts"],
   bundle: true,
+  define,
   plugins: [cssInjectPlugin],
   external: [
     "obsidian",

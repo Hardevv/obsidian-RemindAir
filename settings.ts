@@ -1,4 +1,5 @@
 import { PLUGIN_NAME } from "consts";
+import { isGoogleOAuthConfigured } from "gcalCredentials";
 import ObsidianNotifierPlugin from "main";
 import { PluginSettingTab, Setting } from "obsidian";
 
@@ -79,33 +80,14 @@ export class Settings extends PluginSettingTab {
       text: "Configuration only. Connecting to Google and syncing notes is not implemented yet.",
     });
 
-    const gcal = this.plugin.settings.googleCalendar;
-
-    new Setting(containerEl)
-      .setName("Client ID")
-      .setDesc("OAuth client ID of a Desktop app client created in Google Cloud Console.")
-      .addText((text) =>
-        text
-          .setPlaceholder("…apps.googleusercontent.com")
-          .setValue(gcal.clientId)
-          .onChange(async (value) => {
-            gcal.clientId = value.trim();
-            await this.plugin.saveSettings();
-          }),
-      );
-
-    new Setting(containerEl)
-      .setName("Client secret")
-      .setDesc(
-        "Secret of the same OAuth client. Google may require it when exchanging the code. It is not treated as confidential for desktop clients; PKCE is used regardless.",
-      )
-      .addText((text) => {
-        text.inputEl.type = "password";
-        text.setValue(gcal.clientSecret).onChange(async (value) => {
-          gcal.clientSecret = value.trim();
-          await this.plugin.saveSettings();
-        });
+    if (!isGoogleOAuthConfigured) {
+      containerEl.createDiv({
+        cls: `${PLUGIN_NAME}-gcal-note`,
+        text: "OAuth client is missing in this build (GOOGLE_CLIENT_ID in .env).",
       });
+    }
+
+    const gcal = this.plugin.settings.googleCalendar;
 
     new Setting(containerEl)
       .setName("Google account")
