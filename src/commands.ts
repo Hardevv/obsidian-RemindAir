@@ -1,9 +1,9 @@
-import { PLUGIN_NAME } from "consts";
-import { openReminderEditorAtCursor } from "core";
-import { DateTimePicker } from "datetimePickerModal";
-import ObsidianNotifierPlugin from "main";
+import type ObsidianNotifierPlugin from "main";
 import { MarkdownView } from "obsidian";
-import { getRandomIdSuffix } from "utils";
+import { DateTimePicker } from "src/components/dateTimePickerModal/dateTimePickerModal";
+import { PLUGIN_NAME } from "src/utils/constants";
+import { getRandomIdSuffix } from "src/utils/ids";
+import { openReminderEditorAtCursor } from "src/utils/reminders";
 
 export const setReminderFunc = (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
   new DateTimePicker(plugin, async (date) => {

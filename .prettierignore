@@ -1,0 +1,8 @@
+node_modules
+dist
+main.js
+pnpm-lock.yaml
+data.json
+.env
+.env.example
+.hotreload

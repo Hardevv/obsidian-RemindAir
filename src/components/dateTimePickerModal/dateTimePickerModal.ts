@@ -1,23 +1,24 @@
-import { PLUGIN_NAME } from "consts";
+import { PLUGIN_NAME } from "src/utils/constants";
 import flatpickr from "flatpickr";
 import type ObsidianNotifierPlugin from "main";
 import { Modal, setIcon } from "obsidian";
-import { toLocalDateTimeValue } from "utils";
+import { toLocalDateTimeValue } from "src/utils/dates";
+import type { DateTimePickerDeleteHandler, DateTimePickerSubmitHandler } from "./dateTimePickerModal.types";
 
 export class DateTimePicker extends Modal {
-  onSubmit: (date: string) => void;
+  onSubmit: DateTimePickerSubmitHandler;
   modalEl: HTMLElement;
   titleEl: HTMLElement;
   date: string | Date | null = null;
   plugin: ObsidianNotifierPlugin;
-  private onDelete?: (() => void) | null;
+  private onDelete?: DateTimePickerDeleteHandler | null;
   private viewportCleanup: (() => void) | null = null;
 
   constructor(
     plugin: ObsidianNotifierPlugin,
-    onSubmit: (date: string) => void,
+    onSubmit: DateTimePickerSubmitHandler,
     date: string | Date | null = null,
-    onDelete: (() => void) | null = null,
+    onDelete: DateTimePickerDeleteHandler | null = null,
   ) {
     super(plugin.app);
     this.onSubmit = onSubmit;
@@ -84,7 +85,10 @@ export class DateTimePicker extends Modal {
 
     const modalActionsWrapper = contentEl.createDiv({ cls: `${PLUGIN_NAME}_date-time-picker-modal-actions` });
 
-    const confirmBtn = modalActionsWrapper.createEl("button", { text: "Confirm", cls: `${PLUGIN_NAME}_datetime-picker-modal-confirm-button` });
+    const confirmBtn = modalActionsWrapper.createEl("button", {
+      text: "Confirm",
+      cls: `${PLUGIN_NAME}_datetime-picker-modal-confirm-button`,
+    });
     confirmBtn.addEventListener("click", () => {
       submitSelectedDate();
     });

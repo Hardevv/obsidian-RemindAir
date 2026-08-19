@@ -1,8 +1,8 @@
-import { REMINDER_REGEXP } from "consts";
-import { DateTimePicker } from "datetimePickerModal";
-import ObsidianNotifierPlugin from "main";
+import { DateTimePicker } from "src/components/dateTimePickerModal/dateTimePickerModal";
+import type ObsidianNotifierPlugin from "main";
 import { Editor, MarkdownView } from "obsidian";
-import { toLocalDateTimeValue } from "utils";
+import { REMINDER_REGEXP } from "./constants";
+import { toLocalDateTimeValue } from "./dates";
 
 export const openReminderEditor = (plugin: ObsidianNotifierPlugin, reminderId: string, currentDate: string): void => {
   const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor;

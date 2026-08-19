@@ -1,36 +1,30 @@
-import { EditorView, ViewPlugin, Decoration, DecorationSet, WidgetType, ViewUpdate } from "@codemirror/view";
-import { setReminderFunc } from "commands";
-import { PLUGIN_NAME } from "consts";
-import { addHoursToReminder } from "core";
-import ObsidianNotifierPlugin from "main";
-import { Platform, setIcon } from "obsidian";
-import { getClampedPosition } from "utils";
-
-interface HoveredLine {
-  lineNumber: number;
-  hasReminder: boolean;
-  from: number;
-  to: number;
-}
+import { Decoration, type DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
+import type ObsidianNotifierPlugin from "main";
+import { Platform } from "obsidian";
+import { createActionButton } from "src/atoms/actionButton";
+import { setReminderFunc } from "src/commands";
+import { PLUGIN_NAME } from "src/utils/constants";
+import { getClampedPosition } from "src/utils/positions";
+import { addHoursToReminder } from "src/utils/reminders";
+import type { HoveredLine, InlineAction } from "./inlineActionWidget.types";
 
 const classNames = {
   wrapper: `${PLUGIN_NAME}_inline-actions-wrapper`,
-  actionButton: `${PLUGIN_NAME}_inline-button-action`,
 };
 
-const actions = {
+const actions: { hasReminder: InlineAction[]; noReminder: InlineAction[] } = {
   hasReminder: [
     {
       icon: "clock",
       text: "+1h",
-      cb: (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
+      cb: (plugin, lineNumber) => {
         if (lineNumber) addHoursToReminder(plugin, lineNumber, 1);
       },
     },
     {
       icon: "clock",
       text: "-1h",
-      cb: (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
+      cb: (plugin, lineNumber) => {
         if (lineNumber) addHoursToReminder(plugin, lineNumber, -1);
       },
     },
@@ -39,34 +33,22 @@ const actions = {
     {
       icon: "bell-plus",
       text: undefined,
-      cb: (plugin: ObsidianNotifierPlugin, lineNumber?: number) => {
+      cb: (plugin, lineNumber) => {
         if (lineNumber) setReminderFunc(plugin, lineNumber);
       },
     },
   ],
 };
 
-const createActionButton = (icon: string, cb: () => void, text?: string) => {
-  const btn = createEl("button", { cls: classNames.actionButton });
-  btn.addEventListener("pointerdown", cb);
-  btn.addEventListener("click", cb);
-  setIcon(btn, icon);
-  if (text) btn.appendChild(createEl("span", { text, cls: `${PLUGIN_NAME}_inline-button-text` }));
-  return btn;
-};
-
 const inlineActions = (plugin: ObsidianNotifierPlugin, hoveredLine: HoveredLine | null) => {
   const wrapper = createEl("div", { cls: classNames.wrapper });
   if (!hoveredLine) return wrapper;
 
-  if (hoveredLine.hasReminder)
-    actions.hasReminder.forEach(({ icon, text, cb }) => {
-      wrapper.appendChild(createActionButton(icon, () => cb(plugin, hoveredLine?.lineNumber - 1), text));
-    });
-  else
-    actions.noReminder.forEach(({ icon, text, cb }) => {
-      wrapper.appendChild(createActionButton(icon, () => cb(plugin, hoveredLine?.lineNumber - 1), text));
-    });
+  const lineActions = hoveredLine.hasReminder ? actions.hasReminder : actions.noReminder;
+
+  lineActions.forEach(({ icon, text, cb }) => {
+    wrapper.appendChild(createActionButton(icon, () => cb(plugin, hoveredLine.lineNumber - 1), text));
+  });
 
   return wrapper;
 };
@@ -143,7 +125,9 @@ export const buildHoverLineExtension = (plugin: ObsidianNotifierPlugin) =>
         else {
           const docLength = this.view.state.doc.length;
           const safeTo = getClampedPosition(this.hoveredLine.to, docLength);
-          this.decorations = Decoration.set([Decoration.widget({ widget: new HoverWidget(plugin, this.hoveredLine), side: 1 }).range(safeTo)]);
+          this.decorations = Decoration.set([
+            Decoration.widget({ widget: new HoverWidget(plugin, this.hoveredLine), side: 1 }).range(safeTo),
+          ]);
         }
 
         if (shouldDispatch) this.view.dispatch({});

@@ -1,10 +1,11 @@
 import { RangeSetBuilder } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
-import { PLUGIN_NAME, REMINDER_REGEXP } from "consts";
-import { openReminderEditor, replaceReminderById } from "core";
-import ObsidianNotifierPlugin from "main";
+import type ObsidianNotifierPlugin from "main";
 import { editorLivePreviewField, MarkdownView, setIcon } from "obsidian";
-import { getDateObjectFromReminderString, isDateEqual } from "utils";
+import { PLUGIN_NAME, REMINDER_REGEXP } from "src/utils/constants";
+import { getDateObjectFromReminderString, isDateEqual } from "src/utils/dates";
+import { openReminderEditor, replaceReminderById } from "src/utils/reminders";
+import type { FormattedReminderDate } from "./reminderWidget.types";
 
 class ReminderWidget extends WidgetType {
   private timeFormat: string;
@@ -21,7 +22,7 @@ class ReminderWidget extends WidgetType {
     return this.reminderId === other.reminderId && this.date === other.date && this.timeFormat === other.timeFormat;
   }
 
-  formatDate(date: string) {
+  formatDate(date: string): FormattedReminderDate {
     const dateObj = getDateObjectFromReminderString(date) || new Date();
 
     const now = new Date();

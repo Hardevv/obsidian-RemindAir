@@ -5,7 +5,11 @@
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [],
   "author": "Hardevv",
@@ -17,12 +21,18 @@
     "@codemirror/language": "^6.12.2",
     "@codemirror/state": "^6.5.4",
     "@codemirror/view": "^6.39.16",
+    "@eslint/js": "^10.0.1",
     "@types/flatpickr": "^3.1.4",
     "@types/node": "^16.11.6",
     "builtin-modules": "3.3.0",
     "esbuild": "0.17.3",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
     "obsidian": "latest",
+    "prettier": "^3.9.10",
     "tslib": "2.4.0",
-    "typescript": "4.7.4"
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.72.1"
   }
 }
