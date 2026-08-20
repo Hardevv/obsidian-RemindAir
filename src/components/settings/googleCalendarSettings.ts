@@ -1,5 +1,6 @@
 import type ObsidianNotifierPlugin from "main";
 import { Setting } from "obsidian";
+import { isGoogleAccountConnected } from "src/settings/googleAccount";
 import { PLUGIN_NAME } from "src/utils/constants";
 import { isGoogleOAuthConfigured } from "src/utils/gcalCredentials";
 
@@ -18,24 +19,20 @@ export const displayGoogleCalendarSettings = (containerEl: HTMLElement, plugin: 
   }
 
   const gcal = plugin.settings.googleCalendar;
+  const isConnected = isGoogleAccountConnected(plugin);
 
   new Setting(containerEl)
     .setName("Google account")
-    .setDesc("Not connected. Sign-in will be added in the next step.")
+    .setDesc(isConnected ? gcal.accountEmail : "Not connected.")
     .addButton((button) => button.setButtonText("Connect").setCta().setDisabled(true));
 
-  new Setting(containerEl)
-    .setName("Time zone")
-    .setDesc("E.g. Europe/Warsaw. Leave empty to use the system time zone. Applies to events without an explicit offset.")
-    .addText((text) =>
-      text
-        .setPlaceholder(Intl.DateTimeFormat().resolvedOptions().timeZone)
-        .setValue(gcal.timeZone)
-        .onChange(async (value) => {
-          gcal.timeZone = value.trim();
-          await plugin.saveSettings();
-        }),
-    );
+  if (!isConnected) {
+    containerEl.createDiv({
+      cls: `${PLUGIN_NAME}-gcal-note`,
+      text: "Connect your Google account to configure calendars, tasks and syncing.",
+    });
+    return;
+  }
 
   new Setting(containerEl)
     .setName("Calendars to list")
@@ -96,21 +93,6 @@ export const displayGoogleCalendarSettings = (containerEl: HTMLElement, plugin: 
         gcal.addObsidianLink = value;
         await plugin.saveSettings();
       }),
-    );
-
-  new Setting(containerEl)
-    .setName("HTTPS redirect for the link")
-    .setDesc(
-      "Optional redirector URL, e.g. https://your-worker.workers.dev/open. Google Calendar does not make obsidian:// clickable; an HTTPS link does. Empty means obsidian://.",
-    )
-    .addText((text) =>
-      text
-        .setPlaceholder("https://…/open")
-        .setValue(gcal.linkBaseUrl)
-        .onChange(async (value) => {
-          gcal.linkBaseUrl = value.trim();
-          await plugin.saveSettings();
-        }),
     );
 
   new Setting(containerEl)

@@ -1,10 +1,9 @@
 export interface GCalSettings {
-  timeZone: string;
+  accountEmail: string;
   pullCalendars: string;
   pullDays: number;
   autoSyncMinutes: number;
   addObsidianLink: boolean;
-  linkBaseUrl: string;
   taskListName: string;
 }
 
