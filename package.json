@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "simple-git-hooks"
   },
   "keywords": [],
   "author": "Hardevv",
@@ -29,10 +32,21 @@
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
+    "jsdom": "^30.1.3",
     "obsidian": "latest",
     "prettier": "^3.9.10",
+    "simple-git-hooks": "^2.14.0",
     "tslib": "2.4.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "^8.72.1"
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.0.5"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm test"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "simple-git-hooks"
+    ]
   }
 }
