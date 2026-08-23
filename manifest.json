@@ -1,6 +1,6 @@
 {
   "id": "obsidian-notifier",
-  "name": "Obsidian Notifier",
+  "name": "RemindAir",
   "version": "0.1.0",
   "minAppVersion": "1.0.0",
   "description": "Set a reminder for any line in your notes.",

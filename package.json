@@ -1,5 +1,5 @@
 {
-  "name": "obsidian-notifier",
+  "name": "remindair",
   "version": "0.1.0",
   "description": "Obsidian plugin that lets you set a reminder notification for any line in your notes.",
   "main": "main.js",

@@ -14,7 +14,7 @@ export class Settings extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: "Obsidian notifier" });
+    containerEl.createEl("h2", { text: "RemindAir" });
 
     displayReminderSettings(containerEl, this.plugin);
     displayGoogleCalendarSettings(containerEl, this.plugin);

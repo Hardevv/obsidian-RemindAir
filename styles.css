@@ -1,9 +1,9 @@
-.obsidian-notifier-date-time-picker-modal {
+.RemindAir-date-time-picker-modal {
   width: 350px;
   overflow-y: auto;
 }
 
-.is-mobile .obsidian-notifier-date-time-picker-modal {
+.is-mobile .RemindAir-date-time-picker-modal {
   max-height: 85vh;
   margin-top: 0 !important;
   padding-top: 8px;
@@ -11,23 +11,23 @@
 }
 
 /* Move modal so keyboard is not overlapping it */
-.is-mobile .modal-container:has(.obsidian-notifier-date-time-picker-modal) {
+.is-mobile .modal-container:has(.RemindAir-date-time-picker-modal) {
   align-items: flex-start;
   padding-top: env(safe-area-inset-top, 10px);
 }
 
-.obsidian-notifier-date-time-picker-modal .modal-content {
+.RemindAir-date-time-picker-modal .modal-content {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-.obsidian-notifier-date-time-input {
+.RemindAir-date-time-input {
   visibility: hidden;
   height: 0 !important;
 }
 
-.obsidian-notifier_date-time-picker-modal-actions {
+.RemindAir_date-time-picker-modal-actions {
   display: flex;
   width: 100%;
   padding-top: 15px !important;
@@ -36,7 +36,7 @@
   justify-content: center;
 }
 
-.obsidian-notifier_datetime-picker-modal-confirm-button {
+.RemindAir_datetime-picker-modal-confirm-button {
   background-color: var(--interactive-accent) !important;
   color: var(--text-on-accent);
   font-size: 16px;
@@ -47,7 +47,7 @@
   border-radius: 8px;
   cursor: pointer;
 }
-.obsidian-notifier_datetime-picker-modal-trash-button {
+.RemindAir_datetime-picker-modal-trash-button {
   border-radius: 50%;
   width: 45px;
   height: 45px;
@@ -55,8 +55,8 @@
   align-self: flex-end;
 }
 
-.obsidian-notifier-date-time-picker-modal .flatpickr-day:focus-visible,
-.obsidian-notifier-date-time-picker-modal .flatpickr-day.focused {
+.RemindAir-date-time-picker-modal .flatpickr-day:focus-visible,
+.RemindAir-date-time-picker-modal .flatpickr-day.focused {
   outline: 2px solid var(--interactive-accent);
   background: color-mix(in srgb, var(--interactive-accent) 14%, transparent) !important;
 }
@@ -67,7 +67,7 @@
 }
 
 /* Widget */
-.obsidian-notifier-reminder-widget {
+.RemindAir-reminder-widget {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -81,20 +81,20 @@
     opacity,
     background-color 500ms ease;
 }
-.obsidian-notifier-reminder-widget:hover,
-.obsidian-notifier-reminder-widget-past:hover {
+.RemindAir-reminder-widget:hover,
+.RemindAir-reminder-widget-past:hover {
   background-color: var(--color-base-10);
   opacity: 1;
   text-decoration: none;
 }
-.obsidian-notifier-reminder-widget-past {
+.RemindAir-reminder-widget-past {
   transition:
     opacity,
     background-color 500ms ease;
   opacity: 0.75;
   position: relative;
 }
-.obsidian-notifier-reminder-widget-past::after {
+.RemindAir-reminder-widget-past::after {
   content: "";
   position: absolute;
   width: 80%;
@@ -104,15 +104,15 @@
   margin-top: -1px;
   transition: width 350ms ease;
 }
-.obsidian-notifier-reminder-widget-past:hover::after {
+.RemindAir-reminder-widget-past:hover::after {
   width: 0;
 }
 
-.obsidian-notifier-reminder-widget-date {
+.RemindAir-reminder-widget-date {
   font-size: 0.82em;
   opacity: 0.85;
 }
-.obsidian-notifier-reminder-widget-delete-btn {
+.RemindAir-reminder-widget-delete-btn {
   background: transparent !important;
   box-shadow: none !important;
   border: none;
@@ -121,20 +121,20 @@
   height: 14px;
 }
 
-.obsidian-notifier-reminder-widget-delete-btn svg {
+.RemindAir-reminder-widget-delete-btn svg {
   height: 12px;
   width: 14px;
 }
 
 /* weekend */
-.obsidian-notifier-date-time-picker-modal .flatpickr-day.weekend:not(.selected):not(.today) {
+.RemindAir-date-time-picker-modal .flatpickr-day.weekend:not(.selected):not(.today) {
   color: var(--color-base-60);
   border-color: transparent;
   background-color: rgba(0, 0, 0, 0.04);
 }
 
-.obsidian-notifier-date-time-picker-modal .flatpickr-day.weekend.selected,
-.obsidian-notifier-date-time-picker-modal .flatpickr-day.weekend.today {
+.RemindAir-date-time-picker-modal .flatpickr-day.weekend.selected,
+.RemindAir-date-time-picker-modal .flatpickr-day.weekend.today {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
 }
@@ -145,7 +145,7 @@
 }
 
 /* Inline actions */
-.obsidian-notifier_inline-actions-wrapper {
+.RemindAir_inline-actions-wrapper {
   display: flex;
   gap: 5px;
   margin: 10px;
@@ -157,11 +157,11 @@
   opacity: 0.5;
   transition: opacity 350ms ease;
 }
-.obsidian-notifier_inline-actions-wrapper:hover {
+.RemindAir_inline-actions-wrapper:hover {
   opacity: 1;
 }
 
-.obsidian-notifier_inline-button-action {
+.RemindAir_inline-button-action {
   height: 20px;
   border-radius: 6px;
   border: 1px solid var(--background-modifier-border);
@@ -174,23 +174,23 @@
   justify-content: center;
 }
 
-.obsidian-notifier_inline-button-text {
+.RemindAir_inline-button-text {
   font-size: 12px;
   padding: 0 4px;
 }
 
 /* Google Calendar settings */
-.obsidian-notifier-gcal-note {
+.RemindAir-gcal-note {
   margin-bottom: 12px;
   color: var(--text-muted);
   font-size: 0.9em;
 }
 
-.obsidian-notifier-gcal-help p {
+.RemindAir-gcal-help p {
   color: var(--text-muted);
 }
 
-.obsidian-notifier-gcal-help pre {
+.RemindAir-gcal-help pre {
   overflow-x: auto;
   padding: 10px;
   border-radius: 8px;
