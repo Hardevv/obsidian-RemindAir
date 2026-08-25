@@ -1,5 +1,5 @@
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { fileURLToPath } from "node:url"
+import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   resolve: {
@@ -12,6 +12,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./tests/setup.ts"],
-    include: ["tests/**/*.test.ts"],
+    include: ["src/**/*.test.ts"],
   },
-});
+})

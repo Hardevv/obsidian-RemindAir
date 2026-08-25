@@ -1,5 +1,5 @@
-import type ObsidianNotifierPlugin from "main";
-import { Setting } from "obsidian";
+import type ObsidianNotifierPlugin from "main"
+import { Setting } from "obsidian"
 
 export const displayReminderSettings = (containerEl: HTMLElement, plugin: ObsidianNotifierPlugin): void => {
   new Setting(containerEl)
@@ -9,21 +9,21 @@ export const displayReminderSettings = (containerEl: HTMLElement, plugin: Obsidi
     )
     .addToggle((toggle) =>
       toggle.setValue(plugin.settings.inlineActions).onChange(async (value) => {
-        plugin.settings.inlineActions = value;
-        await plugin.saveSettings();
-        const pluginId = plugin.manifest.id;
+        plugin.settings.inlineActions = value
+        await plugin.saveSettings()
+        const pluginId = plugin.manifest.id
 
         // ugly plugin reload
         // TODO: reload the plugin without disabling it
-        const app = plugin.app as any;
-        await app.plugins.disablePlugin(pluginId);
-        await app.plugins.enablePlugin(pluginId);
+        const app = plugin.app as any
+        await app.plugins.disablePlugin(pluginId)
+        await app.plugins.enablePlugin(pluginId)
         setTimeout(() => {
-          app.setting.open();
-          app.setting.openTabById(pluginId);
-        }, 0);
+          app.setting.open()
+          app.setting.openTabById(pluginId)
+        }, 0)
       }),
-    );
+    )
 
   new Setting(containerEl)
     .setName("Time format in date time picker")
@@ -34,10 +34,10 @@ export const displayReminderSettings = (containerEl: HTMLElement, plugin: Obsidi
         .addOption("12h", "12h")
         .setValue(plugin.settings.timeFormat)
         .onChange(async (value) => {
-          plugin.settings.timeFormat = value as "24h" | "12h";
-          await plugin.saveSettings();
-        });
-    });
+          plugin.settings.timeFormat = value as "24h" | "12h"
+          await plugin.saveSettings()
+        })
+    })
 
   new Setting(containerEl)
     .setName("Start week from")
@@ -48,8 +48,8 @@ export const displayReminderSettings = (containerEl: HTMLElement, plugin: Obsidi
         .addOption("sunday", "sunday")
         .setValue(plugin.settings.startWeekFrom)
         .onChange(async (value) => {
-          plugin.settings.startWeekFrom = value as "monday" | "sunday";
-          await plugin.saveSettings();
-        });
-    });
-};
+          plugin.settings.startWeekFrom = value as "monday" | "sunday"
+          await plugin.saveSettings()
+        })
+    })
+}
