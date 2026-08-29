@@ -53,7 +53,7 @@ const inlineActions = (plugin: ObsidianNotifierPlugin, hoveredLine: HoveredLine 
   return wrapper
 }
 
-class HoverWidget extends WidgetType {
+export class HoverWidget extends WidgetType {
   constructor(
     private plugin: ObsidianNotifierPlugin,
     private hoveredLine: HoveredLine | null = null,

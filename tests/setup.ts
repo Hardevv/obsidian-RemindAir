@@ -73,3 +73,48 @@ Node.prototype.createSpan = function (o?: DomElementInfo | string, cb?: (el: HTM
 Node.prototype.empty = function () {
   this.replaceChildren()
 } as Node["empty"]
+
+Element.prototype.getText = function () {
+  return this.textContent ?? ""
+}
+
+Element.prototype.setText = function (val) {
+  this.textContent = typeof val === "string" ? val : val.textContent
+}
+
+Element.prototype.addClass = function (...classes) {
+  this.classList.add(...classes)
+}
+
+Element.prototype.addClasses = function (classes) {
+  this.classList.add(...classes)
+}
+
+Element.prototype.removeClass = function (...classes) {
+  this.classList.remove(...classes)
+}
+
+Element.prototype.removeClasses = function (classes) {
+  this.classList.remove(...classes)
+}
+
+Element.prototype.toggleClass = function (classes, value) {
+  for (const cls of Array.isArray(classes) ? classes : [classes]) this.classList.toggle(cls, value)
+}
+
+Element.prototype.hasClass = function (cls) {
+  return this.classList.contains(cls)
+}
+
+Element.prototype.setAttr = function (qualifiedName, value) {
+  if (value === null || value === false) this.removeAttribute(qualifiedName)
+  else this.setAttribute(qualifiedName, String(value))
+}
+
+Element.prototype.setAttrs = function (obj) {
+  for (const [key, value] of Object.entries(obj)) this.setAttr(key, value)
+}
+
+Element.prototype.getAttr = function (qualifiedName) {
+  return this.getAttribute(qualifiedName)
+}

@@ -7,7 +7,7 @@ import { getDateObjectFromReminderString, isDateEqual } from "src/utils/dates"
 import { openReminderEditor, replaceReminderById } from "src/utils/reminders"
 import type { FormattedReminderDate } from "./reminderWidget.types"
 
-class ReminderWidget extends WidgetType {
+export class ReminderWidget extends WidgetType {
   private timeFormat: string
   constructor(
     private readonly plugin: ObsidianNotifierPlugin,
