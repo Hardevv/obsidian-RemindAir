@@ -40,3 +40,36 @@ globalThis.createSpan = ((o?: DomElementInfo | string, cb?: (el: HTMLSpanElement
   cb?.(el)
   return el
 }) as typeof createSpan
+
+const createChild = <K extends keyof HTMLElementTagNameMap>(
+  parent: Node,
+  tag: K,
+  o?: DomElementInfo | string,
+  cb?: (el: HTMLElementTagNameMap[K]) => void,
+): HTMLElementTagNameMap[K] => {
+  const el = document.createElement(tag)
+  applyInfo(el, o)
+  cb?.(el)
+  parent.appendChild(el)
+  return el
+}
+
+Node.prototype.createEl = function <K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  o?: DomElementInfo | string,
+  cb?: (el: HTMLElementTagNameMap[K]) => void,
+) {
+  return createChild(this, tag, o, cb)
+} as Node["createEl"]
+
+Node.prototype.createDiv = function (o?: DomElementInfo | string, cb?: (el: HTMLDivElement) => void) {
+  return createChild(this, "div", o, cb)
+} as Node["createDiv"]
+
+Node.prototype.createSpan = function (o?: DomElementInfo | string, cb?: (el: HTMLSpanElement) => void) {
+  return createChild(this, "span", o, cb)
+} as Node["createSpan"]
+
+Node.prototype.empty = function () {
+  this.replaceChildren()
+} as Node["empty"]
