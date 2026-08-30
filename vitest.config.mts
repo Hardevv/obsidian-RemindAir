@@ -6,6 +6,7 @@ export default defineConfig({
     alias: {
       src: fileURLToPath(new URL("./src", import.meta.url)),
       main: fileURLToPath(new URL("./main.ts", import.meta.url)),
+      tests: fileURLToPath(new URL("./tests", import.meta.url)),
       obsidian: fileURLToPath(new URL("./tests/mocks/obsidian.ts", import.meta.url)),
     },
   },
