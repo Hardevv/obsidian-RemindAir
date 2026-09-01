@@ -1,14 +1,24 @@
 import type ObsidianNotifierPlugin from "main"
-import { Setting } from "obsidian"
-import { isGoogleAccountConnected } from "src/settings/googleAccount"
+import { Notice, Setting, type ButtonComponent } from "obsidian"
+import { connectGoogleAccount, disconnectGoogleAccount, isGoogleAccountConnected } from "src/settings/googleAccount"
 import { PLUGIN_NAME } from "src/utils/constants"
 import { isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
 
 export const displayGoogleCalendarSettings = (containerEl: HTMLElement, plugin: ObsidianNotifierPlugin): void => {
+  const root = containerEl.createDiv()
+  const render = (): void => {
+    root.empty()
+    renderGoogleCalendarSettings(root, plugin, render)
+  }
+
+  render()
+}
+
+const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: ObsidianNotifierPlugin, rerender: () => void): void => {
   new Setting(containerEl).setName("Google Calendar").setHeading()
   containerEl.createDiv({
     cls: `${PLUGIN_NAME}-gcal-note`,
-    text: "Configuration only. Connecting to Google and syncing notes is not implemented yet.",
+    text: "Sign in with Google to connect your account. Calendar syncing is not implemented yet.",
   })
 
   if (!isGoogleOAuthConfigured) {
@@ -21,18 +31,35 @@ export const displayGoogleCalendarSettings = (containerEl: HTMLElement, plugin: 
   const gcal = plugin.settings.googleCalendar
   const isConnected = isGoogleAccountConnected(plugin)
 
-  new Setting(containerEl)
-    .setName("Google account")
-    .setDesc(isConnected ? gcal.accountEmail : "Not connected.")
-    .addButton((button) => button.setButtonText("Connect").setCta().setDisabled(true))
-
   if (!isConnected) {
-    containerEl.createDiv({
-      cls: `${PLUGIN_NAME}-gcal-note`,
-      text: "Connect your Google account to configure calendars, tasks and syncing.",
-    })
+    new Setting(containerEl)
+      .setName("Google account")
+      .setDesc("Not connected.")
+      .addButton((button) => {
+        button.setButtonText("Connect").setCta().setDisabled(!isGoogleOAuthConfigured)
+        button.onClick(() => handleConnect(plugin, button, rerender))
+      })
+
     return
   }
+
+  new Setting(containerEl)
+    .setName("Google account")
+    .setDesc(gcal.accountEmail)
+    .addButton((button) =>
+      button
+        .setButtonText("Disconnect")
+        .setWarning()
+        .onClick(async () => {
+          try {
+            await disconnectGoogleAccount(plugin)
+            new Notice("Google account disconnected.")
+            rerender()
+          } catch (error) {
+            new Notice(error instanceof Error ? error.message : "Could not disconnect the Google account.")
+          }
+        }),
+    )
 
   new Setting(containerEl)
     .setName("Calendars to list")
@@ -132,4 +159,17 @@ export const displayGoogleCalendarSettings = (containerEl: HTMLElement, plugin: 
   help.createEl("p", {
     text: "Conflicts: the newer version wins — the note modification time is compared with the event updated field in Google.",
   })
+}
+
+const handleConnect = async (plugin: ObsidianNotifierPlugin, button: ButtonComponent, rerender: () => void): Promise<void> => {
+  button.setDisabled(true).setButtonText("Connecting...")
+
+  try {
+    await connectGoogleAccount(plugin)
+    new Notice("Google account connected.")
+    rerender()
+  } catch (error) {
+    new Notice(error instanceof Error ? error.message : "Could not connect the Google account.")
+    button.setDisabled(false).setButtonText("Connect")
+  }
 }

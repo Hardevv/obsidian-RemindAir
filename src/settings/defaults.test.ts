@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { GCalSettings } from "src/types"
-import { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, normalizeGCalSettings } from "src/settings/defaults"
+import type { GCalSettings, GoogleAuthState } from "src/types"
+import { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, normalizeGCalSettings, normalizeGoogleAuth } from "src/settings/defaults"
 
 describe("DEFAULT_GCAL_SETTINGS", () => {
   it("starts disconnected with sensible defaults", () => {
@@ -25,6 +25,10 @@ describe("DEFAULT_SETTINGS", () => {
 
   it("reuses the default google calendar settings", () => {
     expect(DEFAULT_SETTINGS.googleCalendar).toBe(DEFAULT_GCAL_SETTINGS)
+  })
+
+  it("starts without a google session", () => {
+    expect(DEFAULT_SETTINGS.googleAuth).toBeNull()
   })
 })
 
@@ -78,5 +82,36 @@ describe("normalizeGCalSettings", () => {
     expect(result).not.toHaveProperty("clientSecret")
     expect(result).not.toHaveProperty("timeZone")
     expect(result).not.toHaveProperty("linkBaseUrl")
+  })
+})
+
+describe("normalizeGoogleAuth", () => {
+  const stored: GoogleAuthState = {
+    accessToken: "access-token",
+    refreshToken: "refresh-token",
+    expiresAt: 1_700_000_000_000,
+    scope: "openid email",
+  }
+
+  it("returns null for missing data", () => {
+    expect(normalizeGoogleAuth(undefined)).toBeNull()
+    expect(normalizeGoogleAuth(null)).toBeNull()
+  })
+
+  it("keeps a stored session", () => {
+    expect(normalizeGoogleAuth(stored)).toEqual(stored)
+  })
+
+  it("drops a session without an access token", () => {
+    expect(normalizeGoogleAuth({ ...stored, accessToken: "" })).toBeNull()
+  })
+
+  it("fills the missing fields", () => {
+    expect(normalizeGoogleAuth({ accessToken: "access-token" })).toEqual({
+      accessToken: "access-token",
+      refreshToken: "",
+      expiresAt: 0,
+      scope: "",
+    })
   })
 })

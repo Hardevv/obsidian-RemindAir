@@ -1,3 +1,10 @@
+export interface GoogleAuthState {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+  scope: string
+}
+
 export interface GCalSettings {
   accountEmail: string
   pullCalendars: string
@@ -13,4 +20,5 @@ export interface PluginSettings {
   timeFormat: "24h" | "12h"
   startWeekFrom: "monday" | "sunday"
   googleCalendar: GCalSettings
+  googleAuth: GoogleAuthState | null
 }

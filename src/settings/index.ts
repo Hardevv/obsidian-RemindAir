@@ -6,4 +6,4 @@ export const registerSettings = (plugin: ObsidianNotifierPlugin): void => {
 }
 
 export { Settings } from "./settingsTab"
-export { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, normalizeGCalSettings } from "./defaults"
+export { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, normalizeGCalSettings, normalizeGoogleAuth } from "./defaults"

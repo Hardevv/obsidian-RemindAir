@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest"
 import type ObsidianNotifierPlugin from "main"
-import { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, normalizeGCalSettings, registerSettings, Settings } from "src/settings"
+import {
+  DEFAULT_GCAL_SETTINGS,
+  DEFAULT_SETTINGS,
+  normalizeGCalSettings,
+  normalizeGoogleAuth,
+  registerSettings,
+  Settings,
+} from "src/settings"
 
 describe("registerSettings", () => {
   it("adds the settings tab to the plugin", () => {
@@ -29,5 +36,6 @@ describe("settings re-exports", () => {
     expect(DEFAULT_SETTINGS).toBeDefined()
     expect(DEFAULT_GCAL_SETTINGS).toBeDefined()
     expect(normalizeGCalSettings).toBeTypeOf("function")
+    expect(normalizeGoogleAuth).toBeTypeOf("function")
   })
 })

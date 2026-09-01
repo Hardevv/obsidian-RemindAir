@@ -2,7 +2,22 @@ import { vi } from "vitest"
 
 export const setIcon = vi.fn()
 
-export const Platform = { isMobile: false, isDesktop: true }
+export const requestUrl = vi.fn()
+
+export const Platform = { isMobile: false, isDesktop: true, isMobileApp: false, isDesktopApp: true }
+
+export class Notice {
+  static instances: Notice[] = []
+
+  constructor(
+    public message: string,
+    public timeout?: number,
+  ) {
+    Notice.instances.push(this)
+  }
+
+  hide() {}
+}
 
 export const editorLivePreviewField = {}
 
@@ -75,6 +90,8 @@ export class ButtonComponent {
   text = ""
   cta = false
   disabled = false
+  warning = false
+  onClickCb: ((event?: MouseEvent) => unknown) | undefined
 
   setButtonText(text: string) {
     this.text = text
@@ -88,6 +105,16 @@ export class ButtonComponent {
 
   setDisabled(disabled: boolean) {
     this.disabled = disabled
+    return this
+  }
+
+  setWarning() {
+    this.warning = true
+    return this
+  }
+
+  onClick(cb: (event?: MouseEvent) => unknown) {
+    this.onClickCb = cb
     return this
   }
 }

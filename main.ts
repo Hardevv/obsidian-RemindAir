@@ -1,6 +1,6 @@
 import { Plugin } from "obsidian"
 import { registerCommands } from "src/commands"
-import { DEFAULT_SETTINGS, normalizeGCalSettings, registerSettings } from "src/settings"
+import { DEFAULT_SETTINGS, normalizeGCalSettings, normalizeGoogleAuth, registerSettings } from "src/settings"
 import type { PluginSettings } from "src/types"
 import { DEV_OPEN_SETTINGS } from "src/utils/dev"
 import { openSettingsTab } from "src/utils/obsidian"
@@ -27,6 +27,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
       ...DEFAULT_SETTINGS,
       ...data,
       googleCalendar: normalizeGCalSettings(data?.googleCalendar),
+      googleAuth: normalizeGoogleAuth(data?.googleAuth),
     }
   }
 

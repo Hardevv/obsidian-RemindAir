@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type ObsidianNotifierPlugin from "main"
 import type { GCalSettings } from "src/types"
-import { Setting } from "tests/mocks/obsidian"
+import { Notice, Setting } from "tests/mocks/obsidian"
 
 const credentials = vi.hoisted(() => ({ configured: true }))
 
@@ -9,6 +9,18 @@ vi.mock("src/utils/gcalCredentials", () => ({
   get isGoogleOAuthConfigured() {
     return credentials.configured
   },
+}))
+
+const account = vi.hoisted(() => ({
+  connected: false,
+  connectGoogleAccount: vi.fn(),
+  disconnectGoogleAccount: vi.fn(),
+}))
+
+vi.mock("src/settings/googleAccount", () => ({
+  isGoogleAccountConnected: () => account.connected,
+  connectGoogleAccount: account.connectGoogleAccount,
+  disconnectGoogleAccount: account.disconnectGoogleAccount,
 }))
 
 import { displayGoogleCalendarSettings } from "./googleCalendarSettings"
@@ -44,17 +56,21 @@ const byName = (name: string) => Setting.instances.find((setting) => setting.nam
 describe("displayGoogleCalendarSettings", () => {
   beforeEach(() => {
     Setting.instances = []
+    Notice.instances = []
     credentials.configured = true
+    account.connected = false
     vi.clearAllMocks()
+    account.connectGoogleAccount.mockResolvedValue(undefined)
+    account.disconnectGoogleAccount.mockResolvedValue(undefined)
   })
 
-  it("renders the section heading and the configuration note", () => {
+  it("renders the section heading and the sign-in note", () => {
     const { plugin } = createPlugin()
     const { containerEl, settings } = render(plugin)
 
     expect(settings[0].name).toBe("Google Calendar")
     expect(settings[0].heading).toBe(true)
-    expect(containerEl.textContent).toContain("Configuration only")
+    expect(containerEl.textContent).toContain("Sign in with Google")
   })
 
   it("warns when the OAuth client is missing from the build", () => {
@@ -75,17 +91,16 @@ describe("displayGoogleCalendarSettings", () => {
   })
 
   describe("disconnected account", () => {
-    it("shows only the account row and an explanation", () => {
+    it("shows only the account row", () => {
       const { plugin } = createPlugin()
 
-      const { containerEl, settings } = render(plugin)
+      const { settings } = render(plugin)
 
       expect(settings.map((setting) => setting.name)).toEqual(["Google Calendar", "Google account"])
       expect(byName("Google account")?.desc).toBe("Not connected.")
-      expect(containerEl.textContent).toContain("Connect your Google account to configure calendars, tasks and syncing.")
     })
 
-    it("renders a disabled connect button", () => {
+    it("renders an enabled connect button", () => {
       const { plugin } = createPlugin()
 
       render(plugin)
@@ -93,7 +108,39 @@ describe("displayGoogleCalendarSettings", () => {
 
       expect(button?.text).toBe("Connect")
       expect(button?.cta).toBe(true)
-      expect(button?.disabled).toBe(true)
+      expect(button?.disabled).toBe(false)
+    })
+
+    it("disables the connect button when the OAuth client is missing", () => {
+      credentials.configured = false
+      const { plugin } = createPlugin()
+
+      render(plugin)
+
+      expect(byName("Google account")?.buttons[0].disabled).toBe(true)
+    })
+
+    it("starts the sign-in flow from the connect button", async () => {
+      const { plugin } = createPlugin()
+
+      render(plugin)
+      await byName("Google account")?.buttons[0].onClickCb?.()
+
+      expect(account.connectGoogleAccount).toHaveBeenCalledWith(plugin)
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google account connected.")
+    })
+
+    it("shows the sign-in error and re-enables the button", async () => {
+      const { plugin } = createPlugin()
+      account.connectGoogleAccount.mockRejectedValue(new Error("Google sign-in failed."))
+
+      render(plugin)
+      const button = byName("Google account")?.buttons[0]
+      await button?.onClickCb?.()
+
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google sign-in failed.")
+      expect(button?.text).toBe("Connect")
+      expect(button?.disabled).toBe(false)
     })
 
     it("hides the sync settings and the help block", () => {
@@ -110,12 +157,28 @@ describe("displayGoogleCalendarSettings", () => {
   describe("connected account", () => {
     const connected = { accountEmail: "me@example.com" }
 
-    it("shows the account email", () => {
+    beforeEach(() => {
+      account.connected = true
+    })
+
+    it("shows the account email and the disconnect button", () => {
       const { plugin } = createPlugin(connected)
 
       render(plugin)
 
       expect(byName("Google account")?.desc).toBe("me@example.com")
+      expect(byName("Google account")?.buttons[0].text).toBe("Disconnect")
+      expect(byName("Google account")?.buttons[0].warning).toBe(true)
+    })
+
+    it("disconnects the account from the disconnect button", async () => {
+      const { plugin } = createPlugin(connected)
+
+      render(plugin)
+      await byName("Google account")?.buttons[0].onClickCb?.()
+
+      expect(account.disconnectGoogleAccount).toHaveBeenCalledWith(plugin)
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google account disconnected.")
     })
 
     it("renders all sync settings", () => {
