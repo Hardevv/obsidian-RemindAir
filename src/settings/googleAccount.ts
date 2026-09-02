@@ -114,17 +114,13 @@ export const disconnectGoogleAccount = async (plugin: ObsidianNotifierPlugin): P
   const token = plugin.settings.googleAuth?.refreshToken || plugin.settings.googleAuth?.accessToken
 
   if (token) {
-    try {
-      await requestUrl({
-        url: GOOGLE_REVOKE_URL,
-        method: "POST",
-        contentType: "application/x-www-form-urlencoded",
-        body: formBody({ token }),
-        throw: false,
-      })
-    } catch {
-      // Best effort: the local session is cleared even when Google is unreachable.
-    }
+    await requestUrl({
+      url: GOOGLE_REVOKE_URL,
+      method: "POST",
+      contentType: "application/x-www-form-urlencoded",
+      body: formBody({ token }),
+      throw: false,
+    }).catch(() => undefined)
   }
 
   plugin.settings.googleAuth = null

@@ -1,3 +1,6 @@
+import { base64UrlDecode, base64UrlEncode } from "src/utils/base64"
+import { randomString } from "src/utils/random"
+
 export interface OAuthTokens {
   accessToken: string
   refreshToken: string
@@ -12,27 +15,6 @@ export const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinf
 export const GOOGLE_SCOPES = ["openid", "email", "profile"]
 
 const TOKEN_EXPIRY_MARGIN_MS = 60_000
-
-const base64UrlEncode = (bytes: Uint8Array): string => {
-  let binary = ""
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
-}
-
-const base64UrlDecode = (value: string): string => {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/")
-  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4))
-
-  return atob(normalized + padding)
-}
-
-const randomString = (size: number): string => {
-  const bytes = new Uint8Array(size)
-  crypto.getRandomValues(bytes)
-
-  return base64UrlEncode(bytes)
-}
 
 export const createCodeVerifier = (): string => randomString(64)
 

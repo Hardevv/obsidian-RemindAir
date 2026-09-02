@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type ObsidianNotifierPlugin from "main"
 import type { GCalSettings } from "src/types"
-import { Notice, Setting } from "tests/mocks/obsidian"
+import { Notice, Platform, Setting } from "tests/mocks/obsidian"
 
 const credentials = vi.hoisted(() => ({ configured: true }))
 
@@ -59,6 +59,7 @@ describe("displayGoogleCalendarSettings", () => {
     Notice.instances = []
     credentials.configured = true
     account.connected = false
+    Platform.isDesktopApp = true
     vi.clearAllMocks()
     account.connectGoogleAccount.mockResolvedValue(undefined)
     account.disconnectGoogleAccount.mockResolvedValue(undefined)
@@ -151,6 +152,17 @@ describe("displayGoogleCalendarSettings", () => {
       expect(byName("Calendars to list")).toBeUndefined()
       expect(byName("Sync now")).toBeUndefined()
       expect(containerEl.querySelector(".RemindAir-gcal-help")).toBeNull()
+    })
+
+    it("asks to sign in on desktop when running on mobile", () => {
+      Platform.isDesktopApp = false
+      const { plugin } = createPlugin()
+
+      const { containerEl } = render(plugin)
+
+      expect(byName("Google account")?.desc).toBe("Not connected.")
+      expect(byName("Google account")?.buttons).toHaveLength(0)
+      expect(containerEl.textContent).toContain("Google sign-in is available in the desktop app only")
     })
   })
 

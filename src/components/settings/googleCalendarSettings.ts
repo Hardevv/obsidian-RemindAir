@@ -1,5 +1,5 @@
 import type ObsidianNotifierPlugin from "main"
-import { Notice, Setting, type ButtonComponent } from "obsidian"
+import { Notice, Platform, Setting, type ButtonComponent } from "obsidian"
 import { connectGoogleAccount, disconnectGoogleAccount, isGoogleAccountConnected } from "src/settings/googleAccount"
 import { PLUGIN_NAME } from "src/utils/constants"
 import { isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
@@ -32,6 +32,15 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
   const isConnected = isGoogleAccountConnected(plugin)
 
   if (!isConnected) {
+    if (!Platform.isDesktopApp) {
+      new Setting(containerEl).setName("Google account").setDesc("Not connected.")
+      containerEl.createDiv({
+        cls: `${PLUGIN_NAME}-gcal-note`,
+        text: "Google sign-in is available in the desktop app only. Connect your account on desktop.",
+      })
+      return
+    }
+
     new Setting(containerEl)
       .setName("Google account")
       .setDesc("Not connected.")
