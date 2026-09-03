@@ -1,0 +1,83 @@
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from "obsidian"
+import { DEFAULT_MAX_RESULTS, fetchCalendarEvents, type GoogleCalendarEvent } from "src/google/calendar"
+
+const response = (json: unknown, status = 200): RequestUrlResponse => ({
+  status,
+  json,
+  text: JSON.stringify(json),
+  arrayBuffer: new ArrayBuffer(0),
+  headers: {},
+})
+
+const requestParams = (index = 0): RequestUrlParam => vi.mocked(requestUrl).mock.calls[index][0] as RequestUrlParam
+
+const timeMin = new Date("2026-11-01T00:00:00.000Z")
+const timeMax = new Date("2026-11-30T23:59:59.000Z")
+
+describe("fetchCalendarEvents", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("requests events for the calendar in the given time range", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ items: [] }))
+
+    await fetchCalendarEvents({ accessToken: "access-token", calendarId: "work@group.calendar.google.com", timeMin, timeMax })
+
+    const url = new URL(requestParams().url)
+    expect(url.origin + url.pathname).toBe(
+      "https://www.googleapis.com/calendar/v3/calendars/work%40group.calendar.google.com/events",
+    )
+    expect(url.searchParams.get("timeMin")).toBe("2026-11-01T00:00:00.000Z")
+    expect(url.searchParams.get("timeMax")).toBe("2026-11-30T23:59:59.000Z")
+    expect(url.searchParams.get("singleEvents")).toBe("true")
+    expect(url.searchParams.get("orderBy")).toBe("startTime")
+    expect(url.searchParams.get("maxResults")).toBe(String(DEFAULT_MAX_RESULTS))
+  })
+
+  it("sends the access token and allows a custom max results", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ items: [] }))
+
+    await fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax, maxResults: 10 })
+
+    expect(requestParams().headers).toEqual({ Authorization: ["Bearer", "access-token"].join(" ") })
+    expect(new URL(requestParams().url).searchParams.get("maxResults")).toBe("10")
+  })
+
+  it("returns the event items", async () => {
+    const items: GoogleCalendarEvent[] = [
+      {
+        id: "event-1",
+        summary: "Client meeting",
+        start: { dateTime: "2026-11-02T10:00:00Z" },
+        end: { dateTime: "2026-11-02T11:00:00Z" },
+      },
+    ]
+    vi.mocked(requestUrl).mockResolvedValue(response({ items }))
+
+    await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).resolves.toEqual(items)
+  })
+
+  it("returns an empty list when Google sends no items", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({}))
+
+    await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).resolves.toEqual([])
+  })
+
+  it("throws the Google error message", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: { message: "Invalid credentials" } }, 401))
+
+    await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).rejects.toThrow(
+      "Google Calendar request failed: Invalid credentials",
+    )
+  })
+
+  it("falls back to the status code when Google sends no message", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({}, 500))
+
+    await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).rejects.toThrow(
+      "Google Calendar request failed (500).",
+    )
+  })
+})

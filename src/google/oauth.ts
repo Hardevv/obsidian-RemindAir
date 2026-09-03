@@ -12,7 +12,9 @@ export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 export const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 export const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo"
-export const GOOGLE_SCOPES = ["openid", "email", "profile"]
+export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+export const GOOGLE_TASKS_SCOPE = "https://www.googleapis.com/auth/tasks.readonly"
+export const GOOGLE_SCOPES = ["openid", "email", "profile", GOOGLE_CALENDAR_SCOPE, GOOGLE_TASKS_SCOPE]
 
 const TOKEN_EXPIRY_MARGIN_MS = 60_000
 
