@@ -30,6 +30,21 @@ export interface FetchCalendarEventsOptions {
   maxResults?: number
 }
 
+export interface GoogleEventInput {
+  summary?: string
+  description?: string
+  location?: string
+  start: GoogleEventDateTime
+  end: GoogleEventDateTime
+}
+
+export interface CreateCalendarEventOptions {
+  accessToken: string
+  calendarId: string
+  event: GoogleEventInput
+  sendUpdates?: "all" | "externalOnly" | "none"
+}
+
 const calendarErrorMessage = (status: number, json: unknown): string => {
   const message = (json as { error?: { message?: unknown } } | undefined)?.error?.message
 
@@ -61,4 +76,27 @@ export const fetchCalendarEvents = async ({
   const items = (response.json as { items?: unknown } | undefined)?.items
 
   return Array.isArray(items) ? (items as GoogleCalendarEvent[]) : []
+}
+
+export const createCalendarEvent = async ({
+  accessToken,
+  calendarId,
+  event,
+  sendUpdates,
+}: CreateCalendarEventOptions): Promise<GoogleCalendarEvent> => {
+  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events`)
+  if (sendUpdates) url.searchParams.set("sendUpdates", sendUpdates)
+
+  const response = await requestUrl({
+    url: url.toString(),
+    method: "POST",
+    contentType: "application/json",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(event),
+    throw: false,
+  })
+
+  if (response.status >= 400) throw new Error(calendarErrorMessage(response.status, response.json))
+
+  return (response.json ?? {}) as GoogleCalendarEvent
 }

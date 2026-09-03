@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from "obsidian"
-import { DEFAULT_MAX_RESULTS, fetchCalendarEvents, type GoogleCalendarEvent } from "src/google/calendar"
+import { DEFAULT_MAX_RESULTS, createCalendarEvent, fetchCalendarEvents, type GoogleCalendarEvent } from "src/google/calendar"
 
 const response = (json: unknown, status = 200): RequestUrlResponse => ({
   status,
@@ -78,6 +78,56 @@ describe("fetchCalendarEvents", () => {
 
     await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).rejects.toThrow(
       "Google Calendar request failed (500).",
+    )
+  })
+})
+
+describe("createCalendarEvent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const event = {
+    summary: "Client meeting",
+    description: "Notes",
+    start: { dateTime: "2026-11-02T10:00:00Z" },
+    end: { dateTime: "2026-11-02T11:00:00Z" },
+  }
+
+  it("posts the event to the calendar", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ id: "event-1", ...event }))
+
+    await createCalendarEvent({ accessToken: "access-token", calendarId: "primary", event })
+
+    const params = requestParams()
+    const url = new URL(params.url)
+    expect(params.method).toBe("POST")
+    expect(url.origin + url.pathname).toBe("https://www.googleapis.com/calendar/v3/calendars/primary/events")
+    expect(params.contentType).toBe("application/json")
+    expect(params.headers).toEqual({ Authorization: ["Bearer", "access-token"].join(" ") })
+    expect(JSON.parse(params.body as string)).toEqual(event)
+  })
+
+  it("passes send updates when given", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ id: "event-1", ...event }))
+
+    await createCalendarEvent({ accessToken: "access-token", calendarId: "primary", event, sendUpdates: "all" })
+
+    expect(new URL(requestParams().url).searchParams.get("sendUpdates")).toBe("all")
+  })
+
+  it("returns the created event", async () => {
+    const created = { id: "event-1", htmlLink: "https://calendar.google.com/event", ...event }
+    vi.mocked(requestUrl).mockResolvedValue(response(created))
+
+    await expect(createCalendarEvent({ accessToken: "access-token", calendarId: "primary", event })).resolves.toEqual(created)
+  })
+
+  it("throws the Google error message", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: { message: "Insufficient permissions" } }, 403))
+
+    await expect(createCalendarEvent({ accessToken: "access-token", calendarId: "primary", event })).rejects.toThrow(
+      "Google Calendar request failed: Insufficient permissions",
     )
   })
 })

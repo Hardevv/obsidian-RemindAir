@@ -58,7 +58,7 @@ describe("buildAuthUrl", () => {
     expect(url.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:41234")
     expect(url.searchParams.get("response_type")).toBe("code")
     expect(url.searchParams.get("scope")).toBe(
-      "openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/tasks.readonly",
+      "openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks.readonly",
     )
     expect(url.searchParams.get("state")).toBe("state")
     expect(url.searchParams.get("code_challenge")).toBe("challenge")
