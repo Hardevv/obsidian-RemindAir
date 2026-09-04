@@ -5,6 +5,7 @@ import {
   createCodeVerifier,
   createState,
   decodeIdTokenEmail,
+  hasGoogleScopes,
   isTokenExpired,
   parseTokenResponse,
 } from "./oauth"
@@ -87,12 +88,26 @@ describe("parseTokenResponse", () => {
     expect(parseTokenResponse({ access_token: "at" }, now, "old-rt").refreshToken).toBe("old-rt")
   })
 
+  it("keeps the previous scope when Google does not return a new one", () => {
+    expect(parseTokenResponse({ access_token: "at" }, now, "old-rt", "openid calendar").scope).toBe("openid calendar")
+  })
+
   it("falls back to an hour when the expiry is missing", () => {
     expect(parseTokenResponse({ access_token: "at" }, now).expiresAt).toBe(now + 3_600_000)
   })
 
   it("throws when the access token is missing", () => {
     expect(() => parseTokenResponse({}, now)).toThrow("Google did not return an access token.")
+  })
+})
+
+describe("hasGoogleScopes", () => {
+  it("is true when all required scopes are granted", () => {
+    expect(hasGoogleScopes("openid email https://www.googleapis.com/auth/calendar.readonly", ["openid", "email"])).toBe(true)
+  })
+
+  it("is false when a required scope is missing", () => {
+    expect(hasGoogleScopes("openid email", ["openid", "https://www.googleapis.com/auth/calendar.readonly"])).toBe(false)
   })
 })
 

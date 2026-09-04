@@ -8,6 +8,7 @@ describe("DEFAULT_GCAL_SETTINGS", () => {
       accountEmail: "",
       pullCalendars: "primary",
       pullDays: 60,
+      eventsFolder: "Calendar",
       autoSyncMinutes: 0,
       addObsidianLink: true,
       taskListName: "@default",
@@ -43,6 +44,7 @@ describe("normalizeGCalSettings", () => {
       accountEmail: "me@example.com",
       pullCalendars: "primary, Work",
       pullDays: 7,
+      eventsFolder: "Calendar/Events",
       autoSyncMinutes: 15,
       addObsidianLink: false,
       taskListName: "Tasks",
@@ -56,6 +58,7 @@ describe("normalizeGCalSettings", () => {
 
     expect(result.pullDays).toBe(30)
     expect(result.pullCalendars).toBe(DEFAULT_GCAL_SETTINGS.pullCalendars)
+    expect(result.eventsFolder).toBe(DEFAULT_GCAL_SETTINGS.eventsFolder)
     expect(result.accountEmail).toBe(DEFAULT_GCAL_SETTINGS.accountEmail)
   })
 

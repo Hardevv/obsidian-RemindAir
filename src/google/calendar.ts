@@ -1,7 +1,7 @@
 import { requestUrl } from "obsidian"
 
 export const GOOGLE_CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3"
-export const DEFAULT_MAX_RESULTS = 250
+export const DEFAULT_MAX_RESULTS = 500
 
 export interface GoogleEventDateTime {
   date?: string
@@ -19,7 +19,9 @@ export interface GoogleCalendarEvent {
   end: GoogleEventDateTime
   updated?: string
   htmlLink?: string
+  recurrence?: string[]
   recurringEventId?: string
+  originalStartTime?: GoogleEventDateTime
 }
 
 export interface FetchCalendarEventsOptions {
@@ -45,10 +47,25 @@ export interface CreateCalendarEventOptions {
   sendUpdates?: "all" | "externalOnly" | "none"
 }
 
+export interface GoogleCalendarListEntry {
+  id: string
+  summary?: string
+  summaryOverride?: string
+  primary?: boolean
+}
+
 const calendarErrorMessage = (status: number, json: unknown): string => {
   const message = (json as { error?: { message?: unknown } } | undefined)?.error?.message
 
-  return typeof message === "string" ? `Google Calendar request failed: ${message}` : `Google Calendar request failed (${status}).`
+  if (typeof message === "string") {
+    if (status === 403 && /insufficient authentication scopes/i.test(message)) {
+      return "Google Calendar access is missing. Reconnect your Google account."
+    }
+
+    return `Google Calendar request failed: ${message}`
+  }
+
+  return `Google Calendar request failed (${status}).`
 }
 
 export const fetchCalendarEvents = async ({
@@ -61,8 +78,8 @@ export const fetchCalendarEvents = async ({
   const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events`)
   url.searchParams.set("timeMin", timeMin.toISOString())
   url.searchParams.set("timeMax", timeMax.toISOString())
-  url.searchParams.set("singleEvents", "true")
-  url.searchParams.set("orderBy", "startTime")
+  // Keep recurring events as a single item with the recurrence rule instead of expanding instances.
+  url.searchParams.set("singleEvents", "false")
   url.searchParams.set("maxResults", String(maxResults))
 
   const response = await requestUrl({
@@ -76,6 +93,23 @@ export const fetchCalendarEvents = async ({
   const items = (response.json as { items?: unknown } | undefined)?.items
 
   return Array.isArray(items) ? (items as GoogleCalendarEvent[]) : []
+}
+
+export const fetchCalendarList = async (accessToken: string): Promise<GoogleCalendarListEntry[]> => {
+  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList`)
+  url.searchParams.set("maxResults", "250")
+
+  const response = await requestUrl({
+    url: url.toString(),
+    headers: { Authorization: `Bearer ${accessToken}` },
+    throw: false,
+  })
+
+  if (response.status >= 400) throw new Error(calendarErrorMessage(response.status, response.json))
+
+  const items = (response.json as { items?: unknown } | undefined)?.items
+
+  return Array.isArray(items) ? (items as GoogleCalendarListEntry[]) : []
 }
 
 export const createCalendarEvent = async ({

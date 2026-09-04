@@ -13,7 +13,7 @@ import {
   parseTokenResponse,
 } from "src/google/oauth"
 import { startLoopbackServer } from "src/google/loopbackServer"
-import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
+import { GOOGLE_CLIENT_ID, isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
 
 export const isGoogleAccountConnected = (plugin: ObsidianNotifierPlugin): boolean =>
   plugin.settings.googleCalendar.accountEmail.length > 0 && plugin.settings.googleAuth !== null
@@ -72,7 +72,6 @@ const fetchAccountEmail = async (accessToken: string): Promise<string> => {
 
 const clientCredentials = (): Record<string, string> => ({
   client_id: GOOGLE_CLIENT_ID,
-  ...(GOOGLE_CLIENT_SECRET ? { client_secret: GOOGLE_CLIENT_SECRET } : {}),
 })
 
 export const connectGoogleAccount = async (plugin: ObsidianNotifierPlugin): Promise<void> => {
@@ -140,7 +139,7 @@ export const getGoogleAccessToken = async (plugin: ObsidianNotifierPlugin): Prom
     grant_type: "refresh_token",
   })
 
-  const tokens = parseTokenResponse(response, Date.now(), auth.refreshToken)
+  const tokens = parseTokenResponse(response, Date.now(), auth.refreshToken, auth.scope)
   plugin.settings.googleAuth = tokens
   await plugin.saveSettings()
 

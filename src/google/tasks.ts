@@ -38,7 +38,15 @@ export interface FetchTasksOptions {
 const tasksErrorMessage = (status: number, json: unknown): string => {
   const message = (json as { error?: { message?: unknown } } | undefined)?.error?.message
 
-  return typeof message === "string" ? `Google Tasks request failed: ${message}` : `Google Tasks request failed (${status}).`
+  if (typeof message === "string") {
+    if (status === 403 && /insufficient authentication scopes/i.test(message)) {
+      return "Google Tasks access is missing. Reconnect your Google account."
+    }
+
+    return `Google Tasks request failed: ${message}`
+  }
+
+  return `Google Tasks request failed (${status}).`
 }
 
 export const fetchTasks = async ({

@@ -9,6 +9,7 @@ export interface GCalSettings {
   accountEmail: string
   pullCalendars: string
   pullDays: number
+  eventsFolder: string
   autoSyncMinutes: number
   addObsidianLink: boolean
   taskListName: string

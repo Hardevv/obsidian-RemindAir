@@ -4,6 +4,12 @@ export const setIcon = vi.fn()
 
 export const requestUrl = vi.fn()
 
+export const normalizePath = (path: string): string =>
+  path
+    .replace(/\\/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+|\/+$/g, "")
+
 export const Platform = { isMobile: false, isDesktop: true, isMobileApp: false, isDesktopApp: true }
 
 export class Notice {

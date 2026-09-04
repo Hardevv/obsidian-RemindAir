@@ -23,12 +23,19 @@ vi.mock("src/settings/googleAccount", () => ({
   disconnectGoogleAccount: account.disconnectGoogleAccount,
 }))
 
+const sync = vi.hoisted(() => ({
+  syncCalendarEvents: vi.fn(),
+}))
+
+vi.mock("src/google/eventsSync", () => ({ syncCalendarEvents: sync.syncCalendarEvents }))
+
 import { displayGoogleCalendarSettings } from "./googleCalendarSettings"
 
 const DEFAULT_GCAL: GCalSettings = {
   accountEmail: "",
   pullCalendars: "primary",
   pullDays: 60,
+  eventsFolder: "Calendar",
   autoSyncMinutes: 0,
   addObsidianLink: true,
   taskListName: "@default",
@@ -63,6 +70,7 @@ describe("displayGoogleCalendarSettings", () => {
     vi.clearAllMocks()
     account.connectGoogleAccount.mockResolvedValue(undefined)
     account.disconnectGoogleAccount.mockResolvedValue(undefined)
+    sync.syncCalendarEvents.mockResolvedValue({ created: 0, updated: 0, skipped: 0, errors: [] })
   })
 
   it("renders the section heading and the sign-in note", () => {
@@ -173,21 +181,31 @@ describe("displayGoogleCalendarSettings", () => {
       account.connected = true
     })
 
-    it("shows the account email and the disconnect button", () => {
+    it("shows the account email, reconnect and disconnect buttons", () => {
       const { plugin } = createPlugin(connected)
 
       render(plugin)
 
       expect(byName("Google account")?.desc).toBe("me@example.com")
-      expect(byName("Google account")?.buttons[0].text).toBe("Disconnect")
-      expect(byName("Google account")?.buttons[0].warning).toBe(true)
+      expect(byName("Google account")?.buttons.map((button) => button.text)).toEqual(["Reconnect", "Disconnect"])
+      expect(byName("Google account")?.buttons[1].warning).toBe(true)
+    })
+
+    it("reconnects the account from the reconnect button", async () => {
+      const { plugin } = createPlugin(connected)
+
+      render(plugin)
+      await byName("Google account")?.buttons[0].onClickCb?.()
+
+      expect(account.connectGoogleAccount).toHaveBeenCalledWith(plugin)
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google account connected.")
     })
 
     it("disconnects the account from the disconnect button", async () => {
       const { plugin } = createPlugin(connected)
 
       render(plugin)
-      await byName("Google account")?.buttons[0].onClickCb?.()
+      await byName("Google account")?.buttons[1].onClickCb?.()
 
       expect(account.disconnectGoogleAccount).toHaveBeenCalledWith(plugin)
       expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google account disconnected.")
@@ -202,6 +220,7 @@ describe("displayGoogleCalendarSettings", () => {
         "Google Calendar",
         "Google account",
         "Calendars to list",
+        "Events folder",
         "Days ahead",
         "Auto sync",
         "Google task list",
@@ -221,15 +240,17 @@ describe("displayGoogleCalendarSettings", () => {
       expect(containerEl.textContent).toContain("calendarName")
     })
 
-    it("renders disabled force pull, force push and sync buttons", () => {
+    it("renders disabled force pull and force push buttons, and an enabled sync button", () => {
       const { plugin } = createPlugin(connected)
 
       render(plugin)
 
-      for (const name of ["Force pull from Google", "Force push to Google", "Sync now"]) {
+      for (const name of ["Force pull from Google", "Force push to Google"]) {
         const button = byName(name)?.buttons[0]
         expect(button?.disabled).toBe(true)
       }
+
+      expect(byName("Sync now")?.buttons[0].disabled).toBe(false)
     })
 
     it("saves the calendars to list", async () => {
@@ -240,6 +261,37 @@ describe("displayGoogleCalendarSettings", () => {
 
       expect(plugin.settings.googleCalendar.pullCalendars).toBe("primary, Work")
       expect(saveSettings).toHaveBeenCalledTimes(1)
+    })
+
+    it("saves the events folder", async () => {
+      const { plugin, saveSettings } = createPlugin(connected)
+
+      render(plugin)
+      await byName("Events folder")?.texts[0].onChangeCb?.("Calendar/Events")
+
+      expect(plugin.settings.googleCalendar.eventsFolder).toBe("Calendar/Events")
+      expect(saveSettings).toHaveBeenCalledTimes(1)
+    })
+
+    it("runs the event sync from the sync button", async () => {
+      const { plugin } = createPlugin(connected)
+      sync.syncCalendarEvents.mockResolvedValue({ created: 1, updated: 2, skipped: 3, errors: [] })
+
+      render(plugin)
+      await byName("Sync now")?.buttons[0].onClickCb?.()
+
+      expect(sync.syncCalendarEvents).toHaveBeenCalledWith(plugin)
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google Calendar sync: 1 created, 2 updated, 3 skipped.")
+    })
+
+    it("shows sync errors", async () => {
+      const { plugin } = createPlugin(connected)
+      sync.syncCalendarEvents.mockRejectedValue(new Error("Connect your Google account first."))
+
+      render(plugin)
+      await byName("Sync now")?.buttons[0].onClickCb?.()
+
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Connect your Google account first.")
     })
 
     it("saves a valid number of days ahead", async () => {

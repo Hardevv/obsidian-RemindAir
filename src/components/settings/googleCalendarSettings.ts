@@ -1,5 +1,6 @@
 import type ObsidianNotifierPlugin from "main"
 import { Notice, Platform, Setting, type ButtonComponent } from "obsidian"
+import { syncCalendarEvents } from "src/google/eventsSync"
 import { connectGoogleAccount, disconnectGoogleAccount, isGoogleAccountConnected } from "src/settings/googleAccount"
 import { PLUGIN_NAME } from "src/utils/constants"
 import { isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
@@ -18,7 +19,7 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
   new Setting(containerEl).setName("Google Calendar").setHeading()
   containerEl.createDiv({
     cls: `${PLUGIN_NAME}-gcal-note`,
-    text: "Sign in with Google to connect your account. Calendar syncing is not implemented yet.",
+    text: "Sign in with Google to connect your account. Events are pulled into the events folder.",
   })
 
   if (!isGoogleOAuthConfigured) {
@@ -56,6 +57,9 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
     .setName("Google account")
     .setDesc(gcal.accountEmail)
     .addButton((button) =>
+      button.setButtonText("Reconnect").onClick(() => handleConnect(plugin, button, rerender, "Reconnect")),
+    )
+    .addButton((button) =>
       button
         .setButtonText("Disconnect")
         .setWarning()
@@ -78,6 +82,19 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
         gcal.pullCalendars = value
         await plugin.saveSettings()
       }),
+    )
+
+  new Setting(containerEl)
+    .setName("Events folder")
+    .setDesc("Vault folder where each Google Calendar event is saved as a note.")
+    .addText((text) =>
+      text
+        .setPlaceholder("Calendar")
+        .setValue(gcal.eventsFolder)
+        .onChange(async (value) => {
+          gcal.eventsFolder = value.trim()
+          await plugin.saveSettings()
+        }),
     )
 
   new Setting(containerEl)
@@ -143,8 +160,10 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
 
   new Setting(containerEl)
     .setName("Sync now")
-    .setDesc("Runs a one-off sync of notes and the event list.")
-    .addButton((button) => button.setButtonText("Sync").setDisabled(true))
+    .setDesc("Pulls Google Calendar events into the events folder.")
+    .addButton((button) => {
+      button.setButtonText("Sync").onClick(() => handleSync(plugin, button))
+    })
 
   const help = containerEl.createDiv({ cls: `${PLUGIN_NAME}-gcal-help` })
   help.createEl("p", {
@@ -170,7 +189,12 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
   })
 }
 
-const handleConnect = async (plugin: ObsidianNotifierPlugin, button: ButtonComponent, rerender: () => void): Promise<void> => {
+const handleConnect = async (
+  plugin: ObsidianNotifierPlugin,
+  button: ButtonComponent,
+  rerender: () => void,
+  label = "Connect",
+): Promise<void> => {
   button.setDisabled(true).setButtonText("Connecting...")
 
   try {
@@ -179,6 +203,20 @@ const handleConnect = async (plugin: ObsidianNotifierPlugin, button: ButtonCompo
     rerender()
   } catch (error) {
     new Notice(error instanceof Error ? error.message : "Could not connect the Google account.")
-    button.setDisabled(false).setButtonText("Connect")
+    button.setDisabled(false).setButtonText(label)
+  }
+}
+
+const handleSync = async (plugin: ObsidianNotifierPlugin, button: ButtonComponent): Promise<void> => {
+  button.setDisabled(true).setButtonText("Syncing...")
+
+  try {
+    const result = await syncCalendarEvents(plugin)
+    new Notice(`Google Calendar sync: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`)
+    if (result.errors.length > 0) new Notice(`Some calendars failed: ${result.errors.join("; ")}`)
+  } catch (error) {
+    new Notice(error instanceof Error ? error.message : "Could not sync Google Calendar events.")
+  } finally {
+    button.setDisabled(false).setButtonText("Sync")
   }
 }

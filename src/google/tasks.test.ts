@@ -84,6 +84,16 @@ describe("fetchTasks", () => {
     await expect(fetchTasks({ accessToken: "access-token" })).rejects.toThrow("Google Tasks request failed: Invalid task list")
   })
 
+  it("asks to reconnect when the token lacks tasks scopes", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(
+      response({ error: { message: "Request had insufficient authentication scopes." } }, 403),
+    )
+
+    await expect(fetchTasks({ accessToken: "access-token" })).rejects.toThrow(
+      "Google Tasks access is missing. Reconnect your Google account.",
+    )
+  })
+
   it("falls back to the status code when Google sends no message", async () => {
     vi.mocked(requestUrl).mockResolvedValue(response({}, 500))
 

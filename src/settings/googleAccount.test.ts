@@ -11,7 +11,6 @@ vi.mock("src/google/loopbackServer", () => ({ startLoopbackServer: loopback.star
 
 vi.mock("src/utils/gcalCredentials", () => ({
   GOOGLE_CLIENT_ID: "client-id.apps.googleusercontent.com",
-  GOOGLE_CLIENT_SECRET: "client-secret",
   isGoogleOAuthConfigured: true,
 }))
 
@@ -152,7 +151,7 @@ describe("connectGoogleAccount", () => {
     expect(body.get("grant_type")).toBe("authorization_code")
     expect(body.get("code")).toBe("auth-code")
     expect(body.get("client_id")).toBe("client-id.apps.googleusercontent.com")
-    expect(body.get("client_secret")).toBe("client-secret")
+    expect(body.get("client_secret")).toBeNull()
     expect(body.get("code_verifier")).toBeTruthy()
     expect(body.get("redirect_uri")).toBe(server.redirectUri)
   })
@@ -236,6 +235,7 @@ describe("getGoogleAccessToken", () => {
     expect(plugin.settings.googleAuth).toMatchObject({
       accessToken: "new-token",
       refreshToken: "stored-refresh-token",
+      scope: "openid email",
     })
     expect(saveSettings).toHaveBeenCalledTimes(1)
   })

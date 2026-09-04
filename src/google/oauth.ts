@@ -58,20 +58,32 @@ export const buildAuthUrl = ({ clientId, redirectUri, codeChallenge, state }: Au
   return url.toString()
 }
 
-export const parseTokenResponse = (response: unknown, now = Date.now(), previousRefreshToken = ""): OAuthTokens => {
+export const parseTokenResponse = (
+  response: unknown,
+  now = Date.now(),
+  previousRefreshToken = "",
+  previousScope = "",
+): OAuthTokens => {
   const data = (response ?? {}) as Record<string, unknown>
   const accessToken = typeof data.access_token === "string" ? data.access_token : ""
   if (!accessToken) throw new Error("Google did not return an access token.")
 
   const expiresIn = typeof data.expires_in === "number" && data.expires_in > 0 ? data.expires_in : 3600
   const refreshToken = typeof data.refresh_token === "string" && data.refresh_token.length > 0 ? data.refresh_token : previousRefreshToken
+  const scope = typeof data.scope === "string" && data.scope.length > 0 ? data.scope : previousScope
 
   return {
     accessToken,
     refreshToken,
     expiresAt: now + expiresIn * 1000,
-    scope: typeof data.scope === "string" ? data.scope : "",
+    scope,
   }
+}
+
+export const hasGoogleScopes = (granted: string, required: string[]): boolean => {
+  const scopes = new Set(granted.split(/\s+/).filter((scope) => scope.length > 0))
+
+  return required.every((scope) => scopes.has(scope))
 }
 
 export const decodeIdTokenEmail = (idToken?: string): string => {

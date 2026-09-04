@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from "obsidian"
-import { DEFAULT_MAX_RESULTS, createCalendarEvent, fetchCalendarEvents, type GoogleCalendarEvent } from "src/google/calendar"
+import { DEFAULT_MAX_RESULTS, createCalendarEvent, fetchCalendarEvents, fetchCalendarList, type GoogleCalendarEvent } from "src/google/calendar"
 
 const response = (json: unknown, status = 200): RequestUrlResponse => ({
   status,
@@ -31,8 +31,8 @@ describe("fetchCalendarEvents", () => {
     )
     expect(url.searchParams.get("timeMin")).toBe("2026-11-01T00:00:00.000Z")
     expect(url.searchParams.get("timeMax")).toBe("2026-11-30T23:59:59.000Z")
-    expect(url.searchParams.get("singleEvents")).toBe("true")
-    expect(url.searchParams.get("orderBy")).toBe("startTime")
+    expect(url.searchParams.get("singleEvents")).toBe("false")
+    expect(url.searchParams.get("orderBy")).toBeNull()
     expect(url.searchParams.get("maxResults")).toBe(String(DEFAULT_MAX_RESULTS))
   })
 
@@ -49,9 +49,10 @@ describe("fetchCalendarEvents", () => {
     const items: GoogleCalendarEvent[] = [
       {
         id: "event-1",
-        summary: "Client meeting",
-        start: { dateTime: "2026-11-02T10:00:00Z" },
-        end: { dateTime: "2026-11-02T11:00:00Z" },
+        summary: "Weekly sync",
+        start: { dateTime: "2026-11-11T10:00:00Z" },
+        end: { dateTime: "2026-11-11T11:00:00Z" },
+        recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE"],
       },
     ]
     vi.mocked(requestUrl).mockResolvedValue(response({ items }))
@@ -73,12 +74,52 @@ describe("fetchCalendarEvents", () => {
     )
   })
 
+  it("asks to reconnect when the token lacks calendar scopes", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(
+      response({ error: { message: "Request had insufficient authentication scopes." } }, 403),
+    )
+
+    await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).rejects.toThrow(
+      "Google Calendar access is missing. Reconnect your Google account.",
+    )
+  })
+
   it("falls back to the status code when Google sends no message", async () => {
     vi.mocked(requestUrl).mockResolvedValue(response({}, 500))
 
     await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).rejects.toThrow(
       "Google Calendar request failed (500).",
     )
+  })
+})
+
+describe("fetchCalendarList", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("requests the calendar list with the access token", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ items: [] }))
+
+    await fetchCalendarList("access-token")
+
+    const url = new URL(requestParams().url)
+    expect(url.origin + url.pathname).toBe("https://www.googleapis.com/calendar/v3/users/me/calendarList")
+    expect(url.searchParams.get("maxResults")).toBe("250")
+    expect(requestParams().headers).toEqual({ Authorization: ["Bearer", "access-token"].join(" ") })
+  })
+
+  it("returns the calendar entries", async () => {
+    const items = [{ id: "primary", summary: "Me", primary: true }]
+    vi.mocked(requestUrl).mockResolvedValue(response({ items }))
+
+    await expect(fetchCalendarList("access-token")).resolves.toEqual(items)
+  })
+
+  it("throws the Google error message", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: { message: "Invalid credentials" } }, 401))
+
+    await expect(fetchCalendarList("access-token")).rejects.toThrow("Google Calendar request failed: Invalid credentials")
   })
 })
 
