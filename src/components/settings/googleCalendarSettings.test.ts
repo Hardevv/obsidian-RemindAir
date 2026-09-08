@@ -41,10 +41,13 @@ const DEFAULT_GCAL: GCalSettings = {
   taskListName: "@default",
 }
 
-const createPlugin = (overrides: Partial<GCalSettings> = {}) => {
+const createPlugin = (overrides: Partial<GCalSettings> = {}, scope = "") => {
   const saveSettings = vi.fn(async () => {})
   const plugin = {
-    settings: { googleCalendar: { ...DEFAULT_GCAL, ...overrides } },
+    settings: {
+      googleCalendar: { ...DEFAULT_GCAL, ...overrides },
+      googleAuth: scope ? { accessToken: "at", refreshToken: "rt", expiresAt: 0, scope } : null,
+    },
     saveSettings,
   } as unknown as ObsidianNotifierPlugin
 
@@ -229,6 +232,25 @@ describe("displayGoogleCalendarSettings", () => {
         "Force push to Google",
         "Sync now",
       ])
+    })
+
+    it("warns when the account is missing calendar and tasks scopes", () => {
+      const { plugin } = createPlugin(connected, "openid email profile")
+
+      const { containerEl } = render(plugin)
+
+      expect(containerEl.textContent).toContain("missing Calendar and Tasks permissions")
+    })
+
+    it("hides the scope warning when the account has all scopes", () => {
+      const { plugin } = createPlugin(
+        connected,
+        "openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks.readonly",
+      )
+
+      const { containerEl } = render(plugin)
+
+      expect(containerEl.textContent).not.toContain("missing Calendar and Tasks permissions")
     })
 
     it("renders the frontmatter help block", () => {

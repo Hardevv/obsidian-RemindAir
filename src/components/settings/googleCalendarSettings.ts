@@ -1,6 +1,7 @@
 import type ObsidianNotifierPlugin from "main"
 import { Notice, Platform, Setting, type ButtonComponent } from "obsidian"
 import { syncCalendarEvents } from "src/google/eventsSync"
+import { GOOGLE_REQUIRED_SCOPES, hasGoogleScopes } from "src/google/oauth"
 import { connectGoogleAccount, disconnectGoogleAccount, isGoogleAccountConnected } from "src/settings/googleAccount"
 import { PLUGIN_NAME } from "src/utils/constants"
 import { isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
@@ -31,6 +32,7 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
 
   const gcal = plugin.settings.googleCalendar
   const isConnected = isGoogleAccountConnected(plugin)
+  const missingScopes = isConnected && !hasGoogleScopes(plugin.settings.googleAuth?.scope ?? "", GOOGLE_REQUIRED_SCOPES)
 
   if (!isConnected) {
     if (!Platform.isDesktopApp) {
@@ -73,6 +75,14 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
           }
         }),
     )
+
+  if (missingScopes) {
+    const granted = plugin.settings.googleAuth?.scope || "none"
+    containerEl.createDiv({
+      cls: `${PLUGIN_NAME}-gcal-note`,
+      text: `This account is missing Calendar and Tasks permissions. Click Reconnect and accept the new permissions. Granted scopes: ${granted}`,
+    })
+  }
 
   new Setting(containerEl)
     .setName("Calendars to list")

@@ -11,6 +11,7 @@ vi.mock("src/google/loopbackServer", () => ({ startLoopbackServer: loopback.star
 
 vi.mock("src/utils/gcalCredentials", () => ({
   GOOGLE_CLIENT_ID: "client-id.apps.googleusercontent.com",
+  GOOGLE_CLIENT_SECRET: "",
   isGoogleOAuthConfigured: true,
 }))
 
@@ -23,6 +24,9 @@ const response = (json: unknown, status = 200): RequestUrlResponse => ({
   arrayBuffer: new ArrayBuffer(0),
   headers: {},
 })
+
+const FULL_SCOPE =
+  "openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/tasks.readonly"
 
 const requestParams = (index: number): RequestUrlParam => vi.mocked(requestUrl).mock.calls[index][0] as RequestUrlParam
 
@@ -101,7 +105,7 @@ describe("connectGoogleAccount", () => {
   it("opens the Google consent page with PKCE", async () => {
     const { plugin } = createPlugin()
     vi.mocked(requestUrl).mockResolvedValue(
-      response({ access_token: "at", refresh_token: "rt", expires_in: 3600, id_token: makeIdToken("me@example.com") }),
+      response({ access_token: "at", refresh_token: "rt", expires_in: 3600, scope: FULL_SCOPE, id_token: makeIdToken("me@example.com") }),
     )
 
     await connectGoogleAccount(plugin)
@@ -124,7 +128,7 @@ describe("connectGoogleAccount", () => {
         access_token: "access-token",
         refresh_token: "refresh-token",
         expires_in: 3600,
-        scope: "openid email",
+        scope: FULL_SCOPE,
         id_token: makeIdToken("me@example.com"),
       }),
     )
@@ -134,7 +138,7 @@ describe("connectGoogleAccount", () => {
     expect(plugin.settings.googleAuth).toMatchObject({
       accessToken: "access-token",
       refreshToken: "refresh-token",
-      scope: "openid email",
+      scope: FULL_SCOPE,
     })
     expect(plugin.settings.googleCalendar.accountEmail).toBe("me@example.com")
     expect(saveSettings).toHaveBeenCalledTimes(1)
@@ -143,7 +147,7 @@ describe("connectGoogleAccount", () => {
 
   it("exchanges the code with the verifier and the client credentials", async () => {
     const { plugin } = createPlugin()
-    vi.mocked(requestUrl).mockResolvedValue(response({ access_token: "at", refresh_token: "rt", id_token: makeIdToken("me@example.com") }))
+    vi.mocked(requestUrl).mockResolvedValue(response({ access_token: "at", refresh_token: "rt", scope: FULL_SCOPE, id_token: makeIdToken("me@example.com") }))
 
     await connectGoogleAccount(plugin)
 
@@ -159,7 +163,7 @@ describe("connectGoogleAccount", () => {
   it("reads the email from the userinfo endpoint when the id token has none", async () => {
     const { plugin } = createPlugin()
     vi.mocked(requestUrl)
-      .mockResolvedValueOnce(response({ access_token: "at", refresh_token: "rt" }))
+      .mockResolvedValueOnce(response({ access_token: "at", refresh_token: "rt", scope: FULL_SCOPE }))
       .mockResolvedValueOnce(response({ email: "fallback@example.com" }))
 
     await connectGoogleAccount(plugin)
@@ -176,6 +180,18 @@ describe("connectGoogleAccount", () => {
     expect(plugin.settings.googleAuth).toBeNull()
     expect(saveSettings).not.toHaveBeenCalled()
     expect(server.close).toHaveBeenCalledTimes(1)
+  })
+
+  it("reports the granted scopes when Google skips the calendar scopes", async () => {
+    const { plugin, saveSettings } = createPlugin()
+    vi.mocked(requestUrl).mockResolvedValue(
+      response({ access_token: "at", refresh_token: "rt", scope: "openid email profile", id_token: makeIdToken("me@example.com") }),
+    )
+
+    await expect(connectGoogleAccount(plugin)).rejects.toThrow(
+      "Google did not grant Calendar and Tasks access. Granted scopes: openid email profile.",
+    )
+    expect(saveSettings).toHaveBeenCalledTimes(1)
   })
 })
 

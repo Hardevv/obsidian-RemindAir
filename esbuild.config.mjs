@@ -33,6 +33,7 @@ const readEnv = (key) => process.env[key] ?? fileEnv[key] ?? ""
 
 const injectedEnv = {
   GOOGLE_CLIENT_ID: readEnv("GOOGLE_CLIENT_ID"),
+  GOOGLE_CLIENT_SECRET: readEnv("GOOGLE_CLIENT_SECRET"),
   DEV_OPEN_SETTINGS: readEnv("DEV_OPEN_SETTINGS"),
 }
 

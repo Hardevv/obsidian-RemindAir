@@ -7,6 +7,7 @@ import {
   type GoogleCalendarListEntry,
 } from "src/google/calendar"
 import { getGoogleAccessToken } from "src/settings/googleAccount"
+import { GOOGLE_REQUIRED_SCOPES, hasGoogleScopes } from "src/google/oauth"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 
 const MAX_FILE_NAME_LENGTH = 80
@@ -148,6 +149,11 @@ const uniqueFilePath = (vault: Vault, folder: string, event: GoogleCalendarEvent
 export const syncCalendarEvents = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult> => {
   const accessToken = await getGoogleAccessToken(plugin)
   if (!accessToken) throw new Error("Connect your Google account first.")
+
+  const auth = plugin.settings.googleAuth
+  if (auth && !hasGoogleScopes(auth.scope, GOOGLE_REQUIRED_SCOPES)) {
+    throw new Error("This Google account is missing Calendar permissions. Click Reconnect in the settings.")
+  }
 
   const settings = plugin.settings.googleCalendar
   const calendarNames = parseCalendarNames(settings.pullCalendars)

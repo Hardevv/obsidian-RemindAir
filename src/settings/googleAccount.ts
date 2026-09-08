@@ -9,11 +9,13 @@ import {
   GOOGLE_REVOKE_URL,
   GOOGLE_TOKEN_URL,
   GOOGLE_USERINFO_URL,
+  GOOGLE_REQUIRED_SCOPES,
+  hasGoogleScopes,
   isTokenExpired,
   parseTokenResponse,
 } from "src/google/oauth"
 import { startLoopbackServer } from "src/google/loopbackServer"
-import { GOOGLE_CLIENT_ID, isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
+import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, isGoogleOAuthConfigured } from "src/utils/gcalCredentials"
 
 export const isGoogleAccountConnected = (plugin: ObsidianNotifierPlugin): boolean =>
   plugin.settings.googleCalendar.accountEmail.length > 0 && plugin.settings.googleAuth !== null
@@ -48,7 +50,13 @@ const requestTokens = async (values: Record<string, string>): Promise<Record<str
   })
 
   if (response.status >= 400) {
-    const error = (response.json as { error?: unknown } | undefined)?.error
+    const body = (response.json ?? {}) as { error?: unknown; error_description?: unknown }
+    const error = body.error
+    const description = body.error_description
+
+    if (typeof error === "string" && typeof description === "string" && description.length > 0) {
+      throw new Error(`Google sign-in failed: ${error} (${description}).`)
+    }
 
     throw new Error(typeof error === "string" ? `Google sign-in failed: ${error}.` : "Google sign-in failed.")
   }
@@ -72,6 +80,7 @@ const fetchAccountEmail = async (accessToken: string): Promise<string> => {
 
 const clientCredentials = (): Record<string, string> => ({
   client_id: GOOGLE_CLIENT_ID,
+  ...(GOOGLE_CLIENT_SECRET ? { client_secret: GOOGLE_CLIENT_SECRET } : {}),
 })
 
 export const connectGoogleAccount = async (plugin: ObsidianNotifierPlugin): Promise<void> => {
@@ -104,6 +113,12 @@ export const connectGoogleAccount = async (plugin: ObsidianNotifierPlugin): Prom
     plugin.settings.googleAuth = tokens
     plugin.settings.googleCalendar.accountEmail = email
     await plugin.saveSettings()
+
+    if (!hasGoogleScopes(tokens.scope, GOOGLE_REQUIRED_SCOPES)) {
+      throw new Error(
+        `Google did not grant Calendar and Tasks access. Granted scopes: ${tokens.scope || "none"}. Check Data Access in the Google Cloud Console.`,
+      )
+    }
   } finally {
     server.close()
   }

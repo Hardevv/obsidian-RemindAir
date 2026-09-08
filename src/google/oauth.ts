@@ -15,13 +15,12 @@ export const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinf
 export const GOOGLE_CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 export const GOOGLE_CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 export const GOOGLE_TASKS_SCOPE = "https://www.googleapis.com/auth/tasks.readonly"
+export const GOOGLE_REQUIRED_SCOPES = [GOOGLE_CALENDAR_SCOPE, GOOGLE_CALENDAR_EVENTS_SCOPE, GOOGLE_TASKS_SCOPE]
 export const GOOGLE_SCOPES = [
   "openid",
   "email",
   "profile",
-  GOOGLE_CALENDAR_SCOPE,
-  GOOGLE_CALENDAR_EVENTS_SCOPE,
-  GOOGLE_TASKS_SCOPE,
+  ...GOOGLE_REQUIRED_SCOPES,
 ]
 
 const TOKEN_EXPIRY_MARGIN_MS = 60_000
