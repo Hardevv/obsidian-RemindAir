@@ -32,6 +32,22 @@ export interface FetchCalendarEventsOptions {
   maxResults?: number
 }
 
+export interface FetchCalendarEventsPageOptions extends FetchCalendarEventsOptions {
+  syncToken?: string
+}
+
+export interface CalendarEventsPage {
+  events: GoogleCalendarEvent[]
+  nextSyncToken?: string
+}
+
+export class SyncTokenExpiredError extends Error {
+  constructor() {
+    super("The Google Calendar sync token expired.")
+    this.name = "SyncTokenExpiredError"
+  }
+}
+
 export interface GoogleEventInput {
   summary?: string
   description?: string
@@ -68,32 +84,55 @@ const calendarErrorMessage = (status: number, json: unknown): string => {
   return `Google Calendar request failed (${status}).`
 }
 
-export const fetchCalendarEvents = async ({
+export const fetchCalendarEventsPage = async ({
   accessToken,
   calendarId,
   timeMin,
   timeMax,
   maxResults = DEFAULT_MAX_RESULTS,
-}: FetchCalendarEventsOptions): Promise<GoogleCalendarEvent[]> => {
-  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events`)
-  url.searchParams.set("timeMin", timeMin.toISOString())
-  url.searchParams.set("timeMax", timeMax.toISOString())
-  // Keep recurring events as a single item with the recurrence rule instead of expanding instances.
-  url.searchParams.set("singleEvents", "false")
-  url.searchParams.set("maxResults", String(maxResults))
+  syncToken,
+}: FetchCalendarEventsPageOptions): Promise<CalendarEventsPage> => {
+  const events: GoogleCalendarEvent[] = []
+  let pageToken: string | undefined
+  let nextSyncToken: string | undefined
 
-  const response = await requestUrl({
-    url: url.toString(),
-    headers: { Authorization: `Bearer ${accessToken}` },
-    throw: false,
-  })
+  do {
+    const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events`)
+    url.searchParams.set("singleEvents", "false")
+    url.searchParams.set("maxResults", String(maxResults))
 
-  if (response.status >= 400) throw new Error(calendarErrorMessage(response.status, response.json))
+    if (syncToken) {
+      // Google rejects timeMin, timeMax and orderBy when a sync token is present.
+      url.searchParams.set("syncToken", syncToken)
+    } else {
+      url.searchParams.set("timeMin", timeMin.toISOString())
+      url.searchParams.set("timeMax", timeMax.toISOString())
+      url.searchParams.set("showDeleted", "true")
+    }
 
-  const items = (response.json as { items?: unknown } | undefined)?.items
+    if (pageToken) url.searchParams.set("pageToken", pageToken)
 
-  return Array.isArray(items) ? (items as GoogleCalendarEvent[]) : []
+    const response = await requestUrl({
+      url: url.toString(),
+      headers: { Authorization: `Bearer ${accessToken}` },
+      throw: false,
+    })
+
+    if (response.status === 410) throw new SyncTokenExpiredError()
+    if (response.status >= 400) throw new Error(calendarErrorMessage(response.status, response.json))
+
+    const body = (response.json ?? {}) as { items?: unknown; nextPageToken?: unknown; nextSyncToken?: unknown }
+
+    if (Array.isArray(body.items)) events.push(...(body.items as GoogleCalendarEvent[]))
+    if (typeof body.nextSyncToken === "string") nextSyncToken = body.nextSyncToken
+    pageToken = typeof body.nextPageToken === "string" ? body.nextPageToken : undefined
+  } while (pageToken)
+
+  return { events, nextSyncToken }
 }
+
+export const fetchCalendarEvents = async (options: FetchCalendarEventsOptions): Promise<GoogleCalendarEvent[]> =>
+  (await fetchCalendarEventsPage(options)).events
 
 export const fetchCalendarList = async (accessToken: string): Promise<GoogleCalendarListEntry[]> => {
   const url = new URL(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList`)

@@ -55,7 +55,7 @@ const createPlugin = (googleAuth: GoogleAuthState | null = null, accountEmail = 
         accountEmail,
         pullCalendars: "primary",
         pullDays: 60,
-        autoSyncMinutes: 0,
+        autoSyncSeconds: 0,
         addObsidianLink: true,
         taskListName: "@default",
       },

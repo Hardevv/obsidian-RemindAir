@@ -122,13 +122,15 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
 
   new Setting(containerEl)
     .setName("Auto sync")
-    .setDesc("How often to sync, in minutes. 0 disables automatic syncing.")
+    .setDesc(
+      "How often to sync, in seconds, while Obsidian is open. Switching back to the Obsidian window syncs right away. 0 disables automatic syncing, the minimum is 15.",
+    )
     .addText((text) => {
       text.inputEl.type = "number"
       text.inputEl.min = "0"
-      text.setValue(String(gcal.autoSyncMinutes)).onChange(async (value) => {
+      text.setValue(String(gcal.autoSyncSeconds)).onChange(async (value) => {
         const parsed = Number.parseInt(value, 10)
-        gcal.autoSyncMinutes = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+        gcal.autoSyncSeconds = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
         await plugin.saveSettings()
       })
     })
@@ -170,7 +172,9 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
 
   new Setting(containerEl)
     .setName("Sync now")
-    .setDesc("Pulls Google Calendar events into the events folder.")
+    .setDesc(
+      `Pulls Google Calendar events into the events folder. Last sync: ${describeLastSync(plugin.settings.calendarSync.lastSyncAt)}.`,
+    )
     .addButton((button) => {
       button.setButtonText("Sync").onClick(() => handleSync(plugin, button))
     })
@@ -199,6 +203,9 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
   })
 }
 
+const describeLastSync = (lastSyncAt: number): string =>
+  lastSyncAt > 0 ? new Date(lastSyncAt).toLocaleString() : "never"
+
 const handleConnect = async (
   plugin: ObsidianNotifierPlugin,
   button: ButtonComponent,
@@ -222,7 +229,9 @@ const handleSync = async (plugin: ObsidianNotifierPlugin, button: ButtonComponen
 
   try {
     const result = await syncCalendarEvents(plugin)
-    new Notice(`Google Calendar sync: ${result.created} created, ${result.updated} updated, ${result.skipped} skipped.`)
+    new Notice(
+      `Google Calendar sync: ${result.created} created, ${result.updated} updated, ${result.deleted} deleted, ${result.skipped} skipped.`,
+    )
     if (result.errors.length > 0) new Notice(`Some calendars failed: ${result.errors.join("; ")}`)
   } catch (error) {
     new Notice(error instanceof Error ? error.message : "Could not sync Google Calendar events.")

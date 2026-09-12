@@ -36,7 +36,7 @@ const DEFAULT_GCAL: GCalSettings = {
   pullCalendars: "primary",
   pullDays: 60,
   eventsFolder: "Calendar",
-  autoSyncMinutes: 0,
+  autoSyncSeconds: 0,
   addObsidianLink: true,
   taskListName: "@default",
 }
@@ -47,6 +47,7 @@ const createPlugin = (overrides: Partial<GCalSettings> = {}, scope = "") => {
     settings: {
       googleCalendar: { ...DEFAULT_GCAL, ...overrides },
       googleAuth: scope ? { accessToken: "at", refreshToken: "rt", expiresAt: 0, scope } : null,
+      calendarSync: { syncTokens: {}, lastSyncAt: 0 },
     },
     saveSettings,
   } as unknown as ObsidianNotifierPlugin
@@ -295,15 +296,35 @@ describe("displayGoogleCalendarSettings", () => {
       expect(saveSettings).toHaveBeenCalledTimes(1)
     })
 
+    it("shows when the last sync happened", () => {
+      const { plugin } = createPlugin(connected)
+      plugin.settings.calendarSync.lastSyncAt = Date.parse("2026-10-28T10:00:00.000Z")
+
+      render(plugin)
+
+      expect(byName("Sync now")?.desc).toContain("Last sync:")
+      expect(byName("Sync now")?.desc).toContain("2026")
+    })
+
+    it("says the account was never synced", () => {
+      const { plugin } = createPlugin(connected)
+
+      render(plugin)
+
+      expect(byName("Sync now")?.desc).toContain("Last sync: never.")
+    })
+
     it("runs the event sync from the sync button", async () => {
       const { plugin } = createPlugin(connected)
-      sync.syncCalendarEvents.mockResolvedValue({ created: 1, updated: 2, skipped: 3, errors: [] })
+      sync.syncCalendarEvents.mockResolvedValue({ created: 1, updated: 2, skipped: 3, deleted: 4, errors: [] })
 
       render(plugin)
       await byName("Sync now")?.buttons[0].onClickCb?.()
 
       expect(sync.syncCalendarEvents).toHaveBeenCalledWith(plugin)
-      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe("Google Calendar sync: 1 created, 2 updated, 3 skipped.")
+      expect(Notice.instances[Notice.instances.length - 1]?.message).toBe(
+        "Google Calendar sync: 1 created, 2 updated, 4 deleted, 3 skipped.",
+      )
     })
 
     it("shows sync errors", async () => {
@@ -338,18 +359,18 @@ describe("displayGoogleCalendarSettings", () => {
       const { plugin } = createPlugin(connected)
 
       render(plugin)
-      await byName("Auto sync")?.texts[0].onChangeCb?.("15")
+      await byName("Auto sync")?.texts[0].onChangeCb?.("45")
 
-      expect(plugin.settings.googleCalendar.autoSyncMinutes).toBe(15)
+      expect(plugin.settings.googleCalendar.autoSyncSeconds).toBe(45)
     })
 
     it("falls back to 0 for invalid auto sync input", async () => {
-      const { plugin } = createPlugin({ ...connected, autoSyncMinutes: 15 })
+      const { plugin } = createPlugin({ ...connected, autoSyncSeconds: 45 })
 
       render(plugin)
       await byName("Auto sync")?.texts[0].onChangeCb?.("-5")
 
-      expect(plugin.settings.googleCalendar.autoSyncMinutes).toBe(0)
+      expect(plugin.settings.googleCalendar.autoSyncSeconds).toBe(0)
     })
 
     it("falls back to @default for an empty task list name", async () => {

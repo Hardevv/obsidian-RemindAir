@@ -1,6 +1,7 @@
 import { Plugin } from "obsidian"
 import { registerCommands } from "src/commands"
-import { DEFAULT_SETTINGS, normalizeGCalSettings, normalizeGoogleAuth, registerSettings } from "src/settings"
+import { startCalendarSync } from "src/google/syncScheduler"
+import { DEFAULT_SETTINGS, normalizeCalendarSync, normalizeGCalSettings, normalizeGoogleAuth, registerSettings } from "src/settings"
 import type { PluginSettings } from "src/types"
 import { DEV_OPEN_SETTINGS } from "src/utils/dev"
 import { openSettingsTab } from "src/utils/obsidian"
@@ -15,6 +16,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
     registerSettings(this)
     registerWidgets(this)
     registerCommands(this)
+    startCalendarSync(this)
 
     if (DEV_OPEN_SETTINGS) {
       this.app.workspace.onLayoutReady(() => openSettingsTab(this.app, this.manifest.id))
@@ -28,6 +30,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
       ...data,
       googleCalendar: normalizeGCalSettings(data?.googleCalendar),
       googleAuth: normalizeGoogleAuth(data?.googleAuth),
+      calendarSync: normalizeCalendarSync(data?.calendarSync),
     }
   }
 

@@ -1,8 +1,10 @@
 import type ObsidianNotifierPlugin from "main"
 import { normalizePath, type MetadataCache, type TFile, type Vault } from "obsidian"
 import {
-  fetchCalendarEvents,
+  fetchCalendarEventsPage,
   fetchCalendarList,
+  SyncTokenExpiredError,
+  type CalendarEventsPage,
   type GoogleCalendarEvent,
   type GoogleCalendarListEntry,
 } from "src/google/calendar"
@@ -18,6 +20,7 @@ export interface EventSyncResult {
   created: number
   updated: number
   skipped: number
+  deleted: number
   errors: string[]
 }
 
@@ -146,7 +149,24 @@ const uniqueFilePath = (vault: Vault, folder: string, event: GoogleCalendarEvent
   return path
 }
 
-export const syncCalendarEvents = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult> => {
+const fetchEventsPage = async (
+  accessToken: string,
+  calendarId: string,
+  syncToken: string | undefined,
+  timeMin: Date,
+  timeMax: Date,
+): Promise<CalendarEventsPage> => {
+  try {
+    return await fetchCalendarEventsPage({ accessToken, calendarId, timeMin, timeMax, syncToken })
+  } catch (error) {
+    // An expired token means the calendar was not synced for too long, so start over from a full pull.
+    if (!syncToken || !(error instanceof SyncTokenExpiredError)) throw error
+
+    return fetchCalendarEventsPage({ accessToken, calendarId, timeMin, timeMax })
+  }
+}
+
+const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult> => {
   const accessToken = await getGoogleAccessToken(plugin)
   if (!accessToken) throw new Error("Connect your Google account first.")
 
@@ -181,23 +201,36 @@ export const syncCalendarEvents = async (plugin: ObsidianNotifierPlugin): Promis
     if (id) existing.set(id, file)
   }
 
-  const result: EventSyncResult = { created: 0, updated: 0, skipped: 0, errors: [] }
+  const result: EventSyncResult = { created: 0, updated: 0, skipped: 0, deleted: 0, errors: [] }
+  const syncTokens = plugin.settings.calendarSync.syncTokens
 
   for (const calendar of calendars) {
-    let events: GoogleCalendarEvent[]
+    let page: CalendarEventsPage
 
     try {
-      events = await fetchCalendarEvents({ accessToken, calendarId: calendar.id, timeMin: now, timeMax })
+      page = await fetchEventsPage(accessToken, calendar.id, syncTokens[calendar.id], now, timeMax)
     } catch (error) {
       result.errors.push(`${calendar.name}: ${error instanceof Error ? error.message : "could not fetch events"}`)
       continue
     }
 
-    for (const event of events) {
-      if (!event.id || event.status === "cancelled") continue
+    if (page.nextSyncToken) syncTokens[calendar.id] = page.nextSyncToken
+
+    for (const event of page.events) {
+      if (!event.id) continue
+
+      const file = existing.get(event.id)
+
+      if (event.status === "cancelled") {
+        if (!file) continue
+
+        await vault.trash(file, true)
+        existing.delete(event.id)
+        result.deleted++
+        continue
+      }
 
       const note = buildEventNote(event, calendar.name, calendar.id)
-      const file = existing.get(event.id)
 
       if (file) {
         const eventUpdated = Date.parse(event.updated ?? "")
@@ -218,5 +251,20 @@ export const syncCalendarEvents = async (plugin: ObsidianNotifierPlugin): Promis
     }
   }
 
+  plugin.settings.calendarSync.lastSyncAt = Date.now()
+  await plugin.saveSettings()
+
   return result
+}
+
+const running = new WeakMap<ObsidianNotifierPlugin, Promise<EventSyncResult>>()
+
+export const syncCalendarEvents = (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult> => {
+  const active = running.get(plugin)
+  if (active) return active
+
+  const task = runSync(plugin).finally(() => running.delete(plugin))
+  running.set(plugin, task)
+
+  return task
 }

@@ -4,15 +4,21 @@ import type { GoogleCalendarEvent } from "src/google/calendar"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import type { GCalSettings } from "src/types"
 
-const google = vi.hoisted(() => ({
-  getGoogleAccessToken: vi.fn(),
-  fetchCalendarEvents: vi.fn(),
-  fetchCalendarList: vi.fn(),
-}))
+const google = vi.hoisted(() => {
+  class SyncTokenExpiredError extends Error {}
+
+  return {
+    SyncTokenExpiredError,
+    getGoogleAccessToken: vi.fn(),
+    fetchCalendarEventsPage: vi.fn(),
+    fetchCalendarList: vi.fn(),
+  }
+})
 
 vi.mock("src/settings/googleAccount", () => ({ getGoogleAccessToken: google.getGoogleAccessToken }))
 vi.mock("src/google/calendar", () => ({
-  fetchCalendarEvents: google.fetchCalendarEvents,
+  SyncTokenExpiredError: google.SyncTokenExpiredError,
+  fetchCalendarEventsPage: google.fetchCalendarEventsPage,
   fetchCalendarList: google.fetchCalendarList,
 }))
 
@@ -29,6 +35,7 @@ const createVault = (initialFiles: FakeFile[] = []) => {
   const folders: string[] = []
   const created: { path: string; content: string }[] = []
   const modified: { file: FakeFile; content: string }[] = []
+  const trashed: FakeFile[] = []
 
   const vault = {
     getAbstractFileByPath: vi.fn((path: string) => {
@@ -51,20 +58,30 @@ const createVault = (initialFiles: FakeFile[] = []) => {
     modify: vi.fn(async (file: FakeFile, content: string) => {
       modified.push({ file, content })
     }),
+    trash: vi.fn(async (file: FakeFile) => {
+      const index = files.indexOf(file)
+      if (index >= 0) files.splice(index, 1)
+      trashed.push(file)
+    }),
   }
 
   const metadataCache = {
     getFileCache: vi.fn((file: FakeFile) => (file.frontmatter ? { frontmatter: file.frontmatter } : {})),
   }
 
-  return { vault, metadataCache, files, folders, created, modified }
+  return { vault, metadataCache, files, folders, created, modified, trashed }
 }
 
 const createPlugin = (overrides: Partial<GCalSettings> = {}, initialFiles: FakeFile[] = []) => {
   const vault = createVault(initialFiles)
   const plugin = {
-    settings: { googleCalendar: { ...DEFAULT_GCAL_SETTINGS, ...overrides } },
+    settings: {
+      googleCalendar: { ...DEFAULT_GCAL_SETTINGS, ...overrides },
+      googleAuth: null,
+      calendarSync: { syncTokens: {}, lastSyncAt: 0 },
+    },
     app: { vault: vault.vault, metadataCache: vault.metadataCache },
+    saveSettings: vi.fn(async () => undefined),
   } as unknown as ObsidianNotifierPlugin
 
   return { plugin, ...vault }
@@ -136,7 +153,7 @@ describe("syncCalendarEvents", () => {
     vi.clearAllMocks()
     google.getGoogleAccessToken.mockResolvedValue("access-token")
     google.fetchCalendarList.mockResolvedValue([{ id: "primary", summary: "Me", primary: true }])
-    google.fetchCalendarEvents.mockResolvedValue([event()])
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event()], nextSyncToken: "token-1" })
   })
 
   it("creates a note for each event in the events folder", async () => {
@@ -144,7 +161,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 1, updated: 0, skipped: 0, errors: [] })
+    expect(result).toEqual({ created: 1, updated: 0, skipped: 0, deleted: 0, errors: [] })
     expect(folders).toContain("Calendar")
     expect(created).toHaveLength(1)
     expect(created[0].path).toBe("Calendar/2026-11-02 Client meeting.md")
@@ -157,7 +174,7 @@ describe("syncCalendarEvents", () => {
 
     await syncCalendarEvents(plugin)
 
-    expect(google.fetchCalendarEvents).toHaveBeenCalledWith(
+    expect(google.fetchCalendarEventsPage).toHaveBeenCalledWith(
       expect.objectContaining({ calendarId: "work@group.calendar.google.com" }),
     )
     expect(created[0].content).toContain('calendarName: "Work"')
@@ -169,7 +186,7 @@ describe("syncCalendarEvents", () => {
 
     await syncCalendarEvents(plugin)
 
-    expect(google.fetchCalendarEvents).toHaveBeenCalledWith(expect.objectContaining({ calendarId: "custom-id" }))
+    expect(google.fetchCalendarEventsPage).toHaveBeenCalledWith(expect.objectContaining({ calendarId: "custom-id" }))
   })
 
   it("updates an existing note when the Google event is newer", async () => {
@@ -182,7 +199,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 0, updated: 1, skipped: 0, errors: [] })
+    expect(result).toEqual({ created: 0, updated: 1, skipped: 0, deleted: 0, errors: [] })
     expect(modified).toHaveLength(1)
     expect(modified[0].file).toBe(file)
   })
@@ -197,7 +214,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 0, updated: 0, skipped: 1, errors: [] })
+    expect(result).toEqual({ created: 0, updated: 0, skipped: 1, deleted: 0, errors: [] })
     expect(modified).toHaveLength(0)
   })
 
@@ -217,7 +234,7 @@ describe("syncCalendarEvents", () => {
   })
 
   it("collects calendar errors without stopping the sync", async () => {
-    google.fetchCalendarEvents.mockRejectedValue(new Error("Google Calendar request failed: nope"))
+    google.fetchCalendarEventsPage.mockRejectedValue(new Error("Google Calendar request failed: nope"))
     const { plugin } = createPlugin()
 
     const result = await syncCalendarEvents(plugin)
@@ -227,7 +244,7 @@ describe("syncCalendarEvents", () => {
   })
 
   it("skips cancelled events", async () => {
-    google.fetchCalendarEvents.mockResolvedValue([event({ status: "cancelled" })])
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ status: "cancelled" })] })
     const { plugin, created } = createPlugin()
 
     const result = await syncCalendarEvents(plugin)
@@ -257,13 +274,72 @@ describe("syncCalendarEvents", () => {
     const { plugin } = createPlugin()
 
     await expect(syncCalendarEvents(plugin)).rejects.toThrow("Connect your Google account first.")
-    expect(google.fetchCalendarEvents).not.toHaveBeenCalled()
+    expect(google.fetchCalendarEventsPage).not.toHaveBeenCalled()
   })
 
   it("throws when no calendars are configured", async () => {
     const { plugin } = createPlugin({ pullCalendars: " , " })
 
     await expect(syncCalendarEvents(plugin)).rejects.toThrow("Add at least one calendar to sync.")
-    expect(google.fetchCalendarEvents).not.toHaveBeenCalled()
+    expect(google.fetchCalendarEventsPage).not.toHaveBeenCalled()
+  })
+
+  it("stores the sync token and the last sync time", async () => {
+    const { plugin } = createPlugin()
+
+    await syncCalendarEvents(plugin)
+
+    expect(plugin.settings.calendarSync.syncTokens).toEqual({ primary: "token-1" })
+    expect(plugin.settings.calendarSync.lastSyncAt).toBeGreaterThan(0)
+    expect(plugin.saveSettings).toHaveBeenCalled()
+  })
+
+  it("sends the stored sync token on the next run", async () => {
+    const { plugin } = createPlugin()
+    plugin.settings.calendarSync.syncTokens = { primary: "token-1" }
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.fetchCalendarEventsPage).toHaveBeenCalledWith(expect.objectContaining({ syncToken: "token-1" }))
+  })
+
+  it("deletes the note when Google reports a cancelled event", async () => {
+    const file: FakeFile = {
+      path: "Calendar/2026-11-02 Client meeting.md",
+      stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
+      frontmatter: { googleEventId: "event-1" },
+    }
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ status: "cancelled" })] })
+    const { plugin, trashed } = createPlugin({}, [file])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(result).toEqual({ created: 0, updated: 0, skipped: 0, deleted: 1, errors: [] })
+    expect(trashed).toEqual([file])
+  })
+
+  it("falls back to a full pull when the sync token expired", async () => {
+    const { plugin } = createPlugin()
+    plugin.settings.calendarSync.syncTokens = { primary: "stale" }
+    google.fetchCalendarEventsPage
+      .mockRejectedValueOnce(new google.SyncTokenExpiredError())
+      .mockResolvedValueOnce({ events: [event()], nextSyncToken: "token-2" })
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(result.created).toBe(1)
+    expect(google.fetchCalendarEventsPage).toHaveBeenCalledTimes(2)
+    expect(google.fetchCalendarEventsPage.mock.calls[1][0].syncToken).toBeUndefined()
+    expect(plugin.settings.calendarSync.syncTokens).toEqual({ primary: "token-2" })
+  })
+
+  it("shares one run between concurrent calls", async () => {
+    const { plugin, created } = createPlugin()
+
+    const [first, second] = await Promise.all([syncCalendarEvents(plugin), syncCalendarEvents(plugin)])
+
+    expect(first).toEqual(second)
+    expect(google.fetchCalendarEventsPage).toHaveBeenCalledTimes(1)
+    expect(created).toHaveLength(1)
   })
 })

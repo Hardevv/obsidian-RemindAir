@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from "obsidian"
-import { DEFAULT_MAX_RESULTS, createCalendarEvent, fetchCalendarEvents, fetchCalendarList, type GoogleCalendarEvent } from "src/google/calendar"
+import {
+  DEFAULT_MAX_RESULTS,
+  SyncTokenExpiredError,
+  createCalendarEvent,
+  fetchCalendarEvents,
+  fetchCalendarEventsPage,
+  fetchCalendarList,
+  type GoogleCalendarEvent,
+} from "src/google/calendar"
 
 const response = (json: unknown, status = 200): RequestUrlResponse => ({
   status,
@@ -90,6 +98,60 @@ describe("fetchCalendarEvents", () => {
     await expect(fetchCalendarEvents({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })).rejects.toThrow(
       "Google Calendar request failed (500).",
     )
+  })
+})
+
+describe("fetchCalendarEventsPage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("asks Google for deleted events on a full pull", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ items: [] }))
+
+    await fetchCalendarEventsPage({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })
+
+    const url = new URL(requestParams().url)
+    expect(url.searchParams.get("showDeleted")).toBe("true")
+    expect(url.searchParams.get("syncToken")).toBeNull()
+  })
+
+  it("sends the sync token without a time range", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ items: [], nextSyncToken: "token-2" }))
+
+    const page = await fetchCalendarEventsPage({
+      accessToken: "access-token",
+      calendarId: "primary",
+      timeMin,
+      timeMax,
+      syncToken: "token-1",
+    })
+
+    const url = new URL(requestParams().url)
+    expect(url.searchParams.get("syncToken")).toBe("token-1")
+    expect(url.searchParams.get("timeMin")).toBeNull()
+    expect(url.searchParams.get("timeMax")).toBeNull()
+    expect(page.nextSyncToken).toBe("token-2")
+  })
+
+  it("follows next page tokens", async () => {
+    vi.mocked(requestUrl)
+      .mockResolvedValueOnce(response({ items: [{ id: "a", start: {}, end: {} }], nextPageToken: "page-2" }))
+      .mockResolvedValueOnce(response({ items: [{ id: "b", start: {}, end: {} }], nextSyncToken: "token-1" }))
+
+    const page = await fetchCalendarEventsPage({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax })
+
+    expect(page.events.map((item) => item.id)).toEqual(["a", "b"])
+    expect(page.nextSyncToken).toBe("token-1")
+    expect(new URL(requestParams(1).url).searchParams.get("pageToken")).toBe("page-2")
+  })
+
+  it("reports an expired sync token", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: { message: "Sync token is no longer valid" } }, 410))
+
+    await expect(
+      fetchCalendarEventsPage({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax, syncToken: "old" }),
+    ).rejects.toBeInstanceOf(SyncTokenExpiredError)
   })
 })
 

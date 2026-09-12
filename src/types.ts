@@ -10,9 +10,14 @@ export interface GCalSettings {
   pullCalendars: string
   pullDays: number
   eventsFolder: string
-  autoSyncMinutes: number
+  autoSyncSeconds: number
   addObsidianLink: boolean
   taskListName: string
+}
+
+export interface CalendarSyncState {
+  syncTokens: Record<string, string>
+  lastSyncAt: number
 }
 
 export interface PluginSettings {
@@ -22,4 +27,5 @@ export interface PluginSettings {
   startWeekFrom: "monday" | "sunday"
   googleCalendar: GCalSettings
   googleAuth: GoogleAuthState | null
+  calendarSync: CalendarSyncState
 }

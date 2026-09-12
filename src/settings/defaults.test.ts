@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
-import type { GCalSettings, GoogleAuthState } from "src/types"
-import { DEFAULT_GCAL_SETTINGS, DEFAULT_SETTINGS, normalizeGCalSettings, normalizeGoogleAuth } from "src/settings/defaults"
+import type { CalendarSyncState, GCalSettings, GoogleAuthState } from "src/types"
+import {
+  DEFAULT_CALENDAR_SYNC_STATE,
+  DEFAULT_GCAL_SETTINGS,
+  DEFAULT_SETTINGS,
+  normalizeCalendarSync,
+  normalizeGCalSettings,
+  normalizeGoogleAuth,
+} from "src/settings/defaults"
 
 describe("DEFAULT_GCAL_SETTINGS", () => {
   it("starts disconnected with sensible defaults", () => {
@@ -9,7 +16,7 @@ describe("DEFAULT_GCAL_SETTINGS", () => {
       pullCalendars: "primary",
       pullDays: 60,
       eventsFolder: "Calendar",
-      autoSyncMinutes: 0,
+      autoSyncSeconds: 45,
       addObsidianLink: true,
       taskListName: "@default",
     })
@@ -31,6 +38,40 @@ describe("DEFAULT_SETTINGS", () => {
   it("starts without a google session", () => {
     expect(DEFAULT_SETTINGS.googleAuth).toBeNull()
   })
+
+  it("starts without calendar sync state", () => {
+    expect(DEFAULT_SETTINGS.calendarSync).toBe(DEFAULT_CALENDAR_SYNC_STATE)
+    expect(DEFAULT_CALENDAR_SYNC_STATE).toEqual({ syncTokens: {}, lastSyncAt: 0 })
+  })
+})
+
+describe("normalizeCalendarSync", () => {
+  it("returns the defaults for missing data", () => {
+    expect(normalizeCalendarSync(undefined)).toEqual(DEFAULT_CALENDAR_SYNC_STATE)
+    expect(normalizeCalendarSync(null)).toEqual(DEFAULT_CALENDAR_SYNC_STATE)
+  })
+
+  it("keeps the stored tokens and timestamp", () => {
+    const stored: CalendarSyncState = { syncTokens: { primary: "token-1" }, lastSyncAt: 1_700_000_000_000 }
+
+    expect(normalizeCalendarSync(stored)).toEqual(stored)
+  })
+
+  it("copies the tokens so the stored object is not shared", () => {
+    const stored: CalendarSyncState = { syncTokens: { primary: "token-1" }, lastSyncAt: 0 }
+    const result = normalizeCalendarSync(stored)
+
+    result.syncTokens.work = "token-2"
+
+    expect(stored.syncTokens).toEqual({ primary: "token-1" })
+  })
+
+  it("drops a malformed token map", () => {
+    expect(normalizeCalendarSync({ syncTokens: "nope" as unknown as Record<string, string> })).toEqual({
+      syncTokens: {},
+      lastSyncAt: 0,
+    })
+  })
 })
 
 describe("normalizeGCalSettings", () => {
@@ -45,7 +86,7 @@ describe("normalizeGCalSettings", () => {
       pullCalendars: "primary, Work",
       pullDays: 7,
       eventsFolder: "Calendar/Events",
-      autoSyncMinutes: 15,
+      autoSyncSeconds: 900,
       addObsidianLink: false,
       taskListName: "Tasks",
     }
@@ -63,12 +104,30 @@ describe("normalizeGCalSettings", () => {
   })
 
   it("keeps falsy but valid values", () => {
-    const result = normalizeGCalSettings({ pullDays: 0, autoSyncMinutes: 0, addObsidianLink: false, accountEmail: "" })
+    const result = normalizeGCalSettings({ pullDays: 0, autoSyncSeconds: 0, addObsidianLink: false, accountEmail: "" })
 
     expect(result.pullDays).toBe(0)
-    expect(result.autoSyncMinutes).toBe(0)
+    expect(result.autoSyncSeconds).toBe(0)
     expect(result.addObsidianLink).toBe(false)
     expect(result.accountEmail).toBe("")
+  })
+
+  it("converts the legacy auto sync minutes into seconds", () => {
+    const legacy = { autoSyncMinutes: 15 } as unknown as Partial<GCalSettings>
+
+    expect(normalizeGCalSettings(legacy).autoSyncSeconds).toBe(900)
+  })
+
+  it("treats a legacy zero as unconfigured and uses the default", () => {
+    const legacy = { autoSyncMinutes: 0 } as unknown as Partial<GCalSettings>
+
+    expect(normalizeGCalSettings(legacy).autoSyncSeconds).toBe(DEFAULT_GCAL_SETTINGS.autoSyncSeconds)
+  })
+
+  it("prefers the seconds setting over the legacy minutes", () => {
+    const stored = { autoSyncSeconds: 45, autoSyncMinutes: 15 } as unknown as Partial<GCalSettings>
+
+    expect(normalizeGCalSettings(stored).autoSyncSeconds).toBe(45)
   })
 
   it("drops keys that are no longer supported", () => {
