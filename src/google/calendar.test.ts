@@ -7,6 +7,7 @@ import {
   fetchCalendarEvents,
   fetchCalendarEventsPage,
   fetchCalendarList,
+  updateCalendarEvent,
   type GoogleCalendarEvent,
 } from "src/google/calendar"
 
@@ -152,6 +153,47 @@ describe("fetchCalendarEventsPage", () => {
     await expect(
       fetchCalendarEventsPage({ accessToken: "access-token", calendarId: "primary", timeMin, timeMax, syncToken: "old" }),
     ).rejects.toBeInstanceOf(SyncTokenExpiredError)
+  })
+})
+
+describe("updateCalendarEvent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const event = {
+    summary: "Client meeting",
+    start: { dateTime: "2026-11-02T10:00:00Z" },
+    end: { dateTime: "2026-11-02T11:00:00Z" },
+  }
+
+  it("patches the event with the given fields", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ id: "event-1", ...event }))
+
+    await updateCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1", event })
+
+    const params = requestParams()
+    const url = new URL(params.url)
+    expect(params.method).toBe("PATCH")
+    expect(params.contentType).toBe("application/json")
+    expect(JSON.parse(String(params.body ?? "{}"))).toEqual(event)
+    expect(url.origin + url.pathname).toBe("https://www.googleapis.com/calendar/v3/calendars/primary/events/event-1")
+  })
+
+  it("encodes the event id in the path", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ id: "a b" }))
+
+    await updateCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "a b", event })
+
+    expect(new URL(requestParams().url).pathname).toBe("/calendar/v3/calendars/primary/events/a%20b")
+  })
+
+  it("throws the Google error message", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: { message: "Not Found" } }, 404))
+
+    await expect(
+      updateCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1", event }),
+    ).rejects.toThrow("Google Calendar request failed: Not Found")
   })
 })
 

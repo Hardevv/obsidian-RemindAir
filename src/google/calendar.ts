@@ -134,6 +134,38 @@ export const fetchCalendarEventsPage = async ({
 export const fetchCalendarEvents = async (options: FetchCalendarEventsOptions): Promise<GoogleCalendarEvent[]> =>
   (await fetchCalendarEventsPage(options)).events
 
+export interface UpdateCalendarEventOptions {
+  accessToken: string
+  calendarId: string
+  eventId: string
+  event: GoogleEventInput
+  sendUpdates?: "all" | "externalOnly" | "none"
+}
+
+export const updateCalendarEvent = async ({
+  accessToken,
+  calendarId,
+  eventId,
+  event,
+  sendUpdates,
+}: UpdateCalendarEventOptions): Promise<GoogleCalendarEvent> => {
+  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`)
+  if (sendUpdates) url.searchParams.set("sendUpdates", sendUpdates)
+
+  const response = await requestUrl({
+    url: url.toString(),
+    method: "PATCH",
+    contentType: "application/json",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(event),
+    throw: false,
+  })
+
+  if (response.status >= 400) throw new Error(calendarErrorMessage(response.status, response.json))
+
+  return (response.json ?? {}) as GoogleCalendarEvent
+}
+
 export const fetchCalendarList = async (accessToken: string): Promise<GoogleCalendarListEntry[]> => {
   const url = new URL(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList`)
   url.searchParams.set("maxResults", "250")

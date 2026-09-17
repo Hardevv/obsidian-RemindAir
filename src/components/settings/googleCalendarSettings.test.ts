@@ -74,7 +74,7 @@ describe("displayGoogleCalendarSettings", () => {
     vi.clearAllMocks()
     account.connectGoogleAccount.mockResolvedValue(undefined)
     account.disconnectGoogleAccount.mockResolvedValue(undefined)
-    sync.syncCalendarEvents.mockResolvedValue({ created: 0, updated: 0, skipped: 0, errors: [] })
+    sync.syncCalendarEvents.mockResolvedValue({ pushed: 0, created: 0, updated: 0, skipped: 0, deleted: 0, errors: [] })
   })
 
   it("renders the section heading and the sign-in note", () => {
@@ -316,14 +316,14 @@ describe("displayGoogleCalendarSettings", () => {
 
     it("runs the event sync from the sync button", async () => {
       const { plugin } = createPlugin(connected)
-      sync.syncCalendarEvents.mockResolvedValue({ created: 1, updated: 2, skipped: 3, deleted: 4, errors: [] })
+      sync.syncCalendarEvents.mockResolvedValue({ pushed: 5, created: 1, updated: 2, skipped: 3, deleted: 4, errors: [] })
 
       render(plugin)
       await byName("Sync now")?.buttons[0].onClickCb?.()
 
       expect(sync.syncCalendarEvents).toHaveBeenCalledWith(plugin)
       expect(Notice.instances[Notice.instances.length - 1]?.message).toBe(
-        "Google Calendar sync: 1 created, 2 updated, 4 deleted, 3 skipped.",
+        "Google Calendar sync: 5 pushed, 1 created, 2 updated, 4 deleted, 3 skipped.",
       )
     })
 

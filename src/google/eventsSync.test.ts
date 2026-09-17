@@ -12,6 +12,8 @@ const google = vi.hoisted(() => {
     getGoogleAccessToken: vi.fn(),
     fetchCalendarEventsPage: vi.fn(),
     fetchCalendarList: vi.fn(),
+    createCalendarEvent: vi.fn(),
+    updateCalendarEvent: vi.fn(),
   }
 })
 
@@ -20,14 +22,24 @@ vi.mock("src/google/calendar", () => ({
   SyncTokenExpiredError: google.SyncTokenExpiredError,
   fetchCalendarEventsPage: google.fetchCalendarEventsPage,
   fetchCalendarList: google.fetchCalendarList,
+  createCalendarEvent: google.createCalendarEvent,
+  updateCalendarEvent: google.updateCalendarEvent,
 }))
 
-import { buildEventNote, eventFileName, parseCalendarNames, sanitizeFileName, syncCalendarEvents } from "src/google/eventsSync"
+import {
+  buildEventNote,
+  eventFileName,
+  parseCalendarNames,
+  payloadKey,
+  sanitizeFileName,
+  syncCalendarEvents,
+} from "src/google/eventsSync"
 
 interface FakeFile {
   path: string
   stat: { mtime: number }
   frontmatter?: Record<string, unknown>
+  content?: string
 }
 
 const createVault = (initialFiles: FakeFile[] = []) => {
@@ -48,14 +60,17 @@ const createVault = (initialFiles: FakeFile[] = []) => {
       folders.push(path)
       return {}
     }),
+    read: vi.fn(async (file: FakeFile) => file.content ?? ""),
+    getName: vi.fn(() => "Vault"),
     create: vi.fn(async (path: string, content: string) => {
-      const file: FakeFile = { path, stat: { mtime: 0 } }
+      const file: FakeFile = { path, stat: { mtime: 0 }, content }
       files.push(file)
       created.push({ path, content })
 
       return file
     }),
     modify: vi.fn(async (file: FakeFile, content: string) => {
+      file.content = content
       modified.push({ file, content })
     }),
     trash: vi.fn(async (file: FakeFile) => {
@@ -140,11 +155,29 @@ describe("buildEventNote", () => {
     expect(note.endsWith("Notes\n")).toBe(true)
   })
 
-  it("keeps all-day dates as dates", () => {
+  it("strips the obsidian link from the description", () => {
+    const note = buildEventNote(
+      event({ description: "Notes\n\nobsidian://open?vault=Vault&file=Calendar%2FMeeting" }),
+      "primary",
+      "primary",
+    )
+
+    expect(note).not.toContain("obsidian://open")
+    expect(note.endsWith("Notes\n")).toBe(true)
+  })
+
+  it("keeps all-day dates as dates and marks them as all day", () => {
     const note = buildEventNote(event({ start: { date: "2026-11-11" }, end: { date: "2026-11-12" } }), "primary", "primary")
 
     expect(note).toContain('start: "2026-11-11"')
     expect(note).toContain('end: "2026-11-12"')
+    expect(note).toContain("allDay: true")
+  })
+
+  it("does not mark timed events as all day", () => {
+    const note = buildEventNote(event(), "primary", "primary")
+
+    expect(note).not.toContain("allDay")
   })
 })
 
@@ -154,6 +187,8 @@ describe("syncCalendarEvents", () => {
     google.getGoogleAccessToken.mockResolvedValue("access-token")
     google.fetchCalendarList.mockResolvedValue([{ id: "primary", summary: "Me", primary: true }])
     google.fetchCalendarEventsPage.mockResolvedValue({ events: [event()], nextSyncToken: "token-1" })
+    google.createCalendarEvent.mockResolvedValue({ id: "created-1", updated: "2026-10-28T10:00:00.000Z" })
+    google.updateCalendarEvent.mockResolvedValue({ id: "event-1", updated: "2026-10-28T10:00:00.000Z" })
   })
 
   it("creates a note for each event in the events folder", async () => {
@@ -161,7 +196,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 1, updated: 0, skipped: 0, deleted: 0, errors: [] })
+    expect(result).toEqual({ pushed: 0, created: 1, updated: 0, skipped: 0, deleted: 0, errors: [] })
     expect(folders).toContain("Calendar")
     expect(created).toHaveLength(1)
     expect(created[0].path).toBe("Calendar/2026-11-02 Client meeting.md")
@@ -199,7 +234,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 0, updated: 1, skipped: 0, deleted: 0, errors: [] })
+    expect(result).toEqual({ pushed: 0, created: 0, updated: 1, skipped: 0, deleted: 0, errors: [] })
     expect(modified).toHaveLength(1)
     expect(modified[0].file).toBe(file)
   })
@@ -214,7 +249,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 0, updated: 0, skipped: 1, deleted: 0, errors: [] })
+    expect(result).toEqual({ pushed: 0, created: 0, updated: 0, skipped: 1, deleted: 0, errors: [] })
     expect(modified).toHaveLength(0)
   })
 
@@ -314,7 +349,7 @@ describe("syncCalendarEvents", () => {
 
     const result = await syncCalendarEvents(plugin)
 
-    expect(result).toEqual({ created: 0, updated: 0, skipped: 0, deleted: 1, errors: [] })
+    expect(result).toEqual({ pushed: 0, created: 0, updated: 0, skipped: 0, deleted: 1, errors: [] })
     expect(trashed).toEqual([file])
   })
 
@@ -342,4 +377,192 @@ describe("syncCalendarEvents", () => {
     expect(google.fetchCalendarEventsPage).toHaveBeenCalledTimes(1)
     expect(created).toHaveLength(1)
   })
+
+const eventNote = (frontmatter: Record<string, unknown>, body = "Notes"): string => {
+  const lines = Object.entries(frontmatter).map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+
+  return `---\n${lines.join("\n")}\n---\n\n${body}\n`
+}
+
+const newEventNote = (overrides: Record<string, unknown> = {}, body = "Notes"): FakeFile => {
+  const frontmatter = { googleCalendarId: "primary", title: "New idea", start: "2026-11-05T09:00:00+01:00", ...overrides }
+
+  return { path: "Calendar/New idea.md", stat: { mtime: 0 }, frontmatter, content: eventNote(frontmatter, body) }
+}
+
+describe("push", () => {
+  it("creates a Google event for a note with a calendar, title and start", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [] })
+    const { plugin, modified } = createPlugin({}, [newEventNote()])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).toHaveBeenCalledWith({
+      accessToken: "access-token",
+      calendarId: "primary",
+      event: {
+        summary: "New idea",
+        description: "Notes\n\nobsidian://open?vault=Vault&file=Calendar%2FNew%20idea",
+        location: undefined,
+        start: { dateTime: "2026-11-05T09:00:00+01:00" },
+        end: { dateTime: "2026-11-05T09:00:00.000Z" },
+      },
+    })
+    expect(result.pushed).toBe(1)
+    expect(modified[0].content).toContain('googleEventId: "created-1"')
+    expect(modified[0].content).toContain('googleUpdated: "2026-10-28T10:00:00.000Z"')
+    expect(modified[0].content).toContain("syncedHash:")
+  })
+
+  it("does not duplicate the note when the pull returns the created event", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ id: "created-1" })] })
+    const { plugin, created } = createPlugin({}, [newEventNote()])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(result.pushed).toBe(1)
+    expect(result.created).toBe(0)
+    expect(result.skipped).toBe(1)
+    expect(created).toHaveLength(0)
+  })
+
+  it("skips notes without a calendar, a title or a start", async () => {
+    const files: FakeFile[] = [
+      { path: "Calendar/a.md", stat: { mtime: 0 }, frontmatter: { title: "x", start: "2026-11-05" } },
+      { path: "Calendar/b.md", stat: { mtime: 0 }, frontmatter: { googleCalendarId: "primary", start: "2026-11-05" } },
+      { path: "Calendar/c.md", stat: { mtime: 0 }, frontmatter: { googleCalendarId: "primary", title: "x" } },
+    ]
+    const { plugin } = createPlugin({}, files)
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).not.toHaveBeenCalled()
+  })
+
+  it("skips notes that already have a google event id", async () => {
+    const { plugin } = createPlugin({}, [newEventNote({ googleEventId: "event-1" })])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).not.toHaveBeenCalled()
+  })
+
+  it("pushes only notes from the events folder", async () => {
+    const file = { ...newEventNote(), path: "Other/New idea.md" }
+    const { plugin } = createPlugin({}, [file])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).not.toHaveBeenCalled()
+  })
+
+  it("defaults the end of an all-day event to the next day", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [] })
+    const { plugin } = createPlugin({}, [newEventNote({ start: "2026-11-05" })])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event: expect.objectContaining({ start: { date: "2026-11-05" }, end: { date: "2026-11-06" } }) }),
+    )
+  })
+
+  it("omits the obsidian link when the setting is off", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [] })
+    const { plugin } = createPlugin({ addObsidianLink: false }, [newEventNote()])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event: expect.objectContaining({ description: "Notes" }) }),
+    )
+  })
+
+  it("keeps a note without a google event id when the push fails", async () => {
+    google.createCalendarEvent.mockRejectedValue(new Error("Google Calendar request failed: offline"))
+    const { plugin, modified } = createPlugin({}, [newEventNote()])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(result.pushed).toBe(0)
+    expect(result.errors).toEqual(["Calendar/New idea.md: Google Calendar request failed: offline"])
+    expect(modified).toHaveLength(0)
+  })
+
+  const existingNote = (extra: Record<string, unknown> = {}, mtime = Date.parse("2026-11-01T00:00:00.000Z")) => {
+    const frontmatter = {
+      googleCalendarId: "primary",
+      googleEventId: "event-1",
+      title: "New idea",
+      start: "2026-11-05T09:00:00+01:00",
+      ...extra,
+    }
+
+    return { path: "Calendar/New idea.md", stat: { mtime }, frontmatter, content: eventNote(frontmatter) } as FakeFile
+  }
+
+  const currentHash = (): string =>
+    payloadKey({
+      summary: "New idea",
+      start: "2026-11-05T09:00:00+01:00",
+      end: "",
+      location: "",
+      description: "Notes",
+    })
+
+  it("patches the google event when the note changed", async () => {
+    const { plugin, modified } = createPlugin({}, [existingNote({ syncedHash: "stale" })])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(google.updateCalendarEvent).toHaveBeenCalledWith({
+      accessToken: "access-token",
+      calendarId: "primary",
+      eventId: "event-1",
+      event: expect.objectContaining({ summary: "New idea" }),
+    })
+    expect(result.pushed).toBe(1)
+    expect(modified[0].content).toContain(`syncedHash: ${JSON.stringify(currentHash())}`)
+  })
+
+  it("sends nothing when the note matches the last push", async () => {
+    const { plugin, modified } = createPlugin({}, [existingNote({ syncedHash: currentHash() })])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.updateCalendarEvent).not.toHaveBeenCalled()
+    expect(google.createCalendarEvent).not.toHaveBeenCalled()
+    expect(modified).toHaveLength(0)
+  })
+
+  it("adopts a note that has no synced hash instead of overwriting google", async () => {
+    const { plugin, modified } = createPlugin({}, [existingNote()])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.updateCalendarEvent).not.toHaveBeenCalled()
+    expect(modified[0].content).toContain(`syncedHash: ${JSON.stringify(currentHash())}`)
+  })
+
+  it("keeps the note when the update fails", async () => {
+    google.updateCalendarEvent.mockRejectedValue(new Error("Google Calendar request failed: offline"))
+    const { plugin, modified } = createPlugin({}, [existingNote({ syncedHash: "stale" })])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(result.pushed).toBe(0)
+    expect(result.errors).toEqual(["Calendar/New idea.md: Google Calendar request failed: offline"])
+    expect(modified).toHaveLength(0)
+  })
+
+  it("reports an invalid start date", async () => {
+    const { plugin } = createPlugin({}, [newEventNote({ start: "tomorrow" })])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).not.toHaveBeenCalled()
+    expect(result.errors).toEqual(["Calendar/New idea.md: start is not a valid date."])
+  })
+})
+
 })

@@ -196,10 +196,13 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
     ].join("\n"),
   })
   help.createEl("p", {
-    text: "All-day event: pass start and end as dates (YYYY-MM-DD); end is exclusive, as in Google Calendar.",
+    text: "All-day event: pass start and end as dates (YYYY-MM-DD); end is exclusive, as in Google Calendar. Pulled all-day events get allDay: true.",
   })
   help.createEl("p", {
     text: "Conflicts: the newer version wins — the note modification time is compared with the event updated field in Google.",
+  })
+  help.createEl("p", {
+    text: "A note in the events folder with googleCalendarId, title and start is created in Google Calendar on the next sync. Editing it later patches the event, but only when the content actually changed. end defaults to an hour after start, or the next day for all-day events.",
   })
 }
 
@@ -230,7 +233,7 @@ const handleSync = async (plugin: ObsidianNotifierPlugin, button: ButtonComponen
   try {
     const result = await syncCalendarEvents(plugin)
     new Notice(
-      `Google Calendar sync: ${result.created} created, ${result.updated} updated, ${result.deleted} deleted, ${result.skipped} skipped.`,
+      `Google Calendar sync: ${result.pushed} pushed, ${result.created} created, ${result.updated} updated, ${result.deleted} deleted, ${result.skipped} skipped.`,
     )
     if (result.errors.length > 0) new Notice(`Some calendars failed: ${result.errors.join("; ")}`)
   } catch (error) {
