@@ -181,13 +181,11 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
 
   const help = containerEl.createDiv({ cls: `${PLUGIN_NAME}-gcal-help` })
   help.createEl("p", {
-    text: "A note is an event when its frontmatter has a calendarName property. The value is a Google calendar name or primary.",
+    text: "A note in the events folder with a start is an event, titled after its file name. googleCalendarId picks the calendar, and the first calendar from the list is used when it is missing.",
   })
   help.createEl("pre", {
     text: [
       "---",
-      "calendarName: primary",
-      "title: Client meeting",
       "start: 2026-11-02T10:00:00",
       "end: 2026-11-02T11:00:00",
       "location: Office",
@@ -199,10 +197,16 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
     text: "All-day event: pass start and end as dates (YYYY-MM-DD); end is exclusive, as in Google Calendar. Pulled all-day events get allDay: true.",
   })
   help.createEl("p", {
-    text: "Conflicts: the newer version wins — the note modification time is compared with the event updated field in Google.",
+    text: "The plugin keeps its own bookkeeping in a single remindair property. Do not edit it by hand, deleting it makes the note look like a new event.",
   })
   help.createEl("p", {
-    text: "A note in the events folder with googleCalendarId, title and start is created in Google Calendar on the next sync. Editing it later patches the event, but only when the content actually changed. end defaults to an hour after start, or the next day for all-day events.",
+    text: "The file name is the event title, everything after the date prefix. Rename a note to rename the event, the push follows a couple of seconds later. A date edited in the file name is put back from start.",
+  })
+  help.createEl("p", {
+    text: "Conflicts: pulling overwrites a note only when the Google event is newer than the note. Pushing sends the note only when its content differs from what was sent last time.",
+  })
+  help.createEl("p", {
+    text: "end defaults to an hour after start, or the next day for all-day events. A note written while offline is pushed on the next sync that can reach Google.",
   })
 }
 

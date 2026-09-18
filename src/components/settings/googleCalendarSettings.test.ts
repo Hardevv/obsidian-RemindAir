@@ -260,7 +260,7 @@ describe("displayGoogleCalendarSettings", () => {
       const { containerEl } = render(plugin)
 
       expect(containerEl.querySelector(".RemindAir-gcal-help")).not.toBeNull()
-      expect(containerEl.textContent).toContain("calendarName")
+      expect(containerEl.textContent).toContain("remindair")
     })
 
     it("renders disabled force pull and force push buttons, and an enabled sync button", () => {

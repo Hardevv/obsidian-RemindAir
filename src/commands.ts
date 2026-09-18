@@ -1,6 +1,7 @@
 import type ObsidianNotifierPlugin from "main"
 import { MarkdownView } from "obsidian"
 import { DateTimePicker } from "src/components/dateTimePickerModal/dateTimePickerModal"
+import { fillEventFrontmatter } from "src/google/eventFrontmatter"
 import { PLUGIN_NAME } from "src/utils/constants"
 import { getRandomIdSuffix } from "src/utils/ids"
 import { openReminderEditorAtCursor } from "src/utils/reminders"
@@ -43,7 +44,18 @@ const editReminderInLine = (plugin: ObsidianNotifierPlugin) => {
   })
 }
 
+const createEventFromNote = (plugin: ObsidianNotifierPlugin) => {
+  plugin.addCommand({
+    id: `${PLUGIN_NAME}_create-event-properties`,
+    name: "Create calendar event - from the selection or this note",
+    callback: () => {
+      void fillEventFrontmatter(plugin)
+    },
+  })
+}
+
 export const registerCommands = (plugin: ObsidianNotifierPlugin) => {
   setReminder(plugin)
   editReminderInLine(plugin)
+  createEventFromNote(plugin)
 }

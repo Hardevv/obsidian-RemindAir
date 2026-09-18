@@ -15,6 +15,7 @@ import {
 import { getGoogleAccessToken } from "src/settings/googleAccount"
 import { GOOGLE_REQUIRED_SCOPES, hasGoogleScopes } from "src/google/oauth"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
+import type { GCalSettings } from "src/types"
 
 const MAX_FILE_NAME_LENGTH = 80
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -32,6 +33,29 @@ export interface EventSyncResult {
 interface ResolvedCalendar {
   id: string
   name: string
+}
+
+export const METADATA_KEY = "remindair"
+
+export const LEGACY_KEYS = [
+  "title",
+  "googleEventId",
+  "googleUpdated",
+  "syncedHash",
+  "calendarName",
+  "recurrence",
+  "recurringEventId",
+]
+
+export interface NoteMetadata {
+  title?: string
+  calendarId?: string
+  calendarName?: string
+  eventId?: string
+  hash?: string
+  updated?: string
+  recurringEventId?: string
+  recurrence?: string[]
 }
 
 export const parseCalendarNames = (value: string): string[] =>
@@ -54,12 +78,40 @@ export const isAllDayEvent = (event: GoogleCalendarEvent): boolean => Boolean(ev
 
 const eventEndValue = (event: GoogleCalendarEvent): string => event.end.date ?? event.end.dateTime ?? ""
 
-export const eventFileName = (event: GoogleCalendarEvent): string => {
-  const title = sanitizeFileName(event.summary ?? "") || "Untitled event"
-  const date = eventStartValue(event).slice(0, 10)
+// A vertical bar lookalike: it reads like | but does not collide with [[note|alias]] links.
+export const NAME_SEPARATOR = "│"
 
-  return sanitizeFileName(date ? `${date} ${title}` : title) || `event-${event.id}`
+// Older names used a middle dot or a plain pipe, they still have to be readable.
+const SEPARATORS = `${NAME_SEPARATOR}|·|\\|`
+const NAME_PREFIX = new RegExp(`^(\\d{4}-\\d{2}-\\d{2})(?: (\\d{2}-\\d{2}))?\\s*(?:${SEPARATORS})?\\s*(.*)$`)
+
+/** The date and time part of the file name, always derived from start. */
+export const namePrefix = (start: string): string => {
+  if (!start) return ""
+
+  const stamp = start.includes("T") ? start.slice(0, 16).replace("T", " ") : start.slice(0, 10)
+
+  return sanitizeFileName(stamp)
 }
+
+export const parseNoteName = (basename: string): { prefix: string; title: string } => {
+  const match = NAME_PREFIX.exec(basename.trim())
+  if (!match) return { prefix: "", title: basename.trim() }
+
+  const prefix = match[2] ? `${match[1]} ${match[2]}` : match[1]
+
+  return { prefix, title: match[3].trim() }
+}
+
+export const noteBaseName = (start: string, title: string): string => {
+  const cleanTitle = sanitizeFileName(title) || "Untitled event"
+  const prefix = namePrefix(start)
+
+  return sanitizeFileName(prefix ? `${prefix} ${NAME_SEPARATOR} ${cleanTitle}` : cleanTitle) || cleanTitle
+}
+
+export const eventFileName = (event: GoogleCalendarEvent): string =>
+  noteBaseName(eventStartValue(event), event.summary ?? "")
 
 const yamlValue = (value: string): string => JSON.stringify(value)
 
@@ -94,27 +146,68 @@ const eventPayloadKey = (event: GoogleCalendarEvent): string =>
     description: stripObsidianLink(event.description ?? ""),
   })
 
+const safeJson = (value: string): unknown => {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+const legacyMetadata = (frontmatter: Record<string, unknown>): NoteMetadata => {
+  const metadata: NoteMetadata = {}
+  const title = frontmatterText(frontmatter.title)
+  const calendarId = frontmatterText(frontmatter.googleCalendarId)
+  const eventId = frontmatterText(frontmatter.googleEventId)
+  const hash = frontmatterText(frontmatter.syncedHash)
+  const updated = frontmatterText(frontmatter.googleUpdated)
+  const calendarName = frontmatterText(frontmatter.calendarName)
+  const recurringEventId = frontmatterText(frontmatter.recurringEventId)
+
+  if (title) metadata.title = title
+  if (calendarId) metadata.calendarId = calendarId
+  if (eventId) metadata.eventId = eventId
+  if (hash) metadata.hash = hash
+  if (updated) metadata.updated = updated
+  if (calendarName) metadata.calendarName = calendarName
+  if (recurringEventId) metadata.recurringEventId = recurringEventId
+  if (Array.isArray(frontmatter.recurrence)) metadata.recurrence = frontmatter.recurrence.map(String)
+
+  return metadata
+}
+
+/** Returns null when the property exists but cannot be read, so the note is never treated as new. */
+export const parseNoteMetadata = (frontmatter?: Record<string, unknown> | null): NoteMetadata | null => {
+  if (!frontmatter) return {}
+
+  const legacy = legacyMetadata(frontmatter)
+  const raw = frontmatter[METADATA_KEY]
+  if (raw === undefined || raw === null || raw === "") return legacy
+
+  const parsed = typeof raw === "object" ? raw : typeof raw === "string" ? safeJson(raw) : null
+  if (!parsed || typeof parsed !== "object") return null
+
+  return { ...legacy, ...(parsed as NoteMetadata) }
+}
+
+const serializeMetadata = (metadata: NoteMetadata): string => JSON.stringify(metadata)
+
 export const buildEventNote = (event: GoogleCalendarEvent, calendarName: string, calendarId: string): string => {
+  const metadata: NoteMetadata = { title: event.summary ?? "", calendarId, eventId: event.id, hash: eventPayloadKey(event) }
+  if (calendarName) metadata.calendarName = calendarName
+  if (event.updated) metadata.updated = event.updated
+  if (event.recurringEventId) metadata.recurringEventId = event.recurringEventId
+  if (event.recurrence?.length) metadata.recurrence = event.recurrence
+
   const lines = [
     "---",
-    `calendarName: ${yamlValue(calendarName)}`,
-    `googleCalendarId: ${yamlValue(calendarId)}`,
-    `googleEventId: ${yamlValue(event.id)}`,
-    `title: ${yamlValue(event.summary ?? "")}`,
     `start: ${yamlValue(eventStartValue(event))}`,
     `end: ${yamlValue(eventEndValue(event))}`,
   ]
 
   if (isAllDayEvent(event)) lines.push("allDay: true")
   if (event.location) lines.push(`location: ${yamlValue(event.location)}`)
-  if (event.updated) lines.push(`googleUpdated: ${yamlValue(event.updated)}`)
-  lines.push(`syncedHash: ${yamlValue(eventPayloadKey(event))}`)
-  if (event.recurringEventId) lines.push(`recurringEventId: ${yamlValue(event.recurringEventId)}`)
-  if (event.recurrence?.length) {
-    lines.push("recurrence:")
-    for (const rule of event.recurrence) lines.push(`  - ${yamlValue(rule)}`)
-  }
-
+  lines.push(`remindair: ${yamlValue(serializeMetadata(metadata))}`)
   lines.push("---", "", stripObsidianLink(event.description ?? ""))
 
   return `${lines.join("\n").trimEnd()}\n`
@@ -189,7 +282,26 @@ const defaultEnd = (start: GoogleEventDateTime): GoogleEventDateTime => {
   return { dateTime: new Date(startMs + 60 * 60 * 1000).toISOString() }
 }
 
-const setFrontmatter = (content: string, values: Record<string, string>): string => {
+const stripKeys = (lines: string[], keys: string[]): string[] => {
+  const result: string[] = []
+  let skipping = false
+
+  for (const line of lines) {
+    if (keys.some((key) => new RegExp(`^${key}\\s*:`).test(line))) {
+      skipping = true
+      continue
+    }
+
+    if (skipping && /^\s+-/.test(line)) continue
+
+    skipping = false
+    result.push(line)
+  }
+
+  return result
+}
+
+const setFrontmatter = (content: string, values: Record<string, string>, removeKeys: string[] = []): string => {
   const normalized = content.replace(/\r\n/g, "\n")
   const entries = Object.entries(values)
   const block = entries.map(([key, value]) => `${key}: ${yamlValue(value)}`)
@@ -200,7 +312,7 @@ const setFrontmatter = (content: string, values: Record<string, string>): string
   if (end < 0) return normalized
 
   const frontmatter = normalized.slice(4, end)
-  const lines = frontmatter.length > 0 ? frontmatter.split("\n") : []
+  const lines = stripKeys(frontmatter.length > 0 ? frontmatter.split("\n") : [], removeKeys)
   const pending = [...entries]
 
   const updated = lines.map((line) => {
@@ -259,7 +371,7 @@ const loadCalendars = async (
   return { calendars, entries }
 }
 
-const ensureFolder = async (vault: Vault, folder: string): Promise<void> => {
+export const ensureFolder = async (vault: Vault, folder: string): Promise<void> => {
   if (!folder) return
 
   let current = ""
@@ -272,9 +384,9 @@ const ensureFolder = async (vault: Vault, folder: string): Promise<void> => {
 }
 
 const readEventId = (file: TFile, metadataCache: MetadataCache): string | null => {
-  const id = metadataCache.getFileCache(file)?.frontmatter?.googleEventId
+  const metadata = parseNoteMetadata(metadataCache.getFileCache(file)?.frontmatter)
 
-  return typeof id === "string" && id.length > 0 ? id : null
+  return metadata?.eventId ?? null
 }
 
 const pushNotes = async (
@@ -282,9 +394,11 @@ const pushNotes = async (
   accessToken: string,
   entries: GoogleCalendarListEntry[],
   folder: string,
+  defaultCalendarId: string,
 ): Promise<{ pushed: number; errors: string[]; files: Map<string, TFile> }> => {
   const vault = plugin.app.vault
   const metadataCache = plugin.app.metadataCache
+  const fileManager = plugin.app.fileManager
   const settings = plugin.settings.googleCalendar
   const folderPrefix = folder ? `${folder}/` : ""
   const vaultName = vault.getName()
@@ -296,10 +410,14 @@ const pushNotes = async (
     const frontmatter = metadataCache.getFileCache(file)?.frontmatter
     if (!frontmatter) continue
 
-    const calendarValue = frontmatterText(frontmatter.googleCalendarId)
-    const title = frontmatterText(frontmatter.title)
+    const metadata = parseNoteMetadata(frontmatter)
+    if (!metadata) {
+      result.errors.push(`${file.path}: the ${METADATA_KEY} property is not valid JSON.`)
+      continue
+    }
+
     const startValue = frontmatterText(frontmatter.start)
-    if (!calendarValue || !title || !startValue) continue
+    if (!startValue) continue
 
     const start = toEventDateTime(startValue)
     if (!start) {
@@ -307,19 +425,29 @@ const pushNotes = async (
       continue
     }
 
+    const title = parseNoteName(file.basename).title || frontmatterText(frontmatter.title) || "Untitled event"
+    const expectedName = noteBaseName(startValue, title)
+
+    // The prefix belongs to start, so a date or time edited in the file name is put back, and old names get the separator.
+    if (file.basename !== expectedName) {
+      await fileManager.renameFile(file, uniqueNotePath(vault, folder, expectedName, file.path))
+    }
+
+    const calendarValue = metadata.calendarId || frontmatterText(frontmatter.googleCalendarId) || defaultCalendarId
+    if (!calendarValue) continue
+
     const content = await vault.read(file)
     const body = stripObsidianLink(splitNote(content).body)
     const location = frontmatterText(frontmatter.location)
     const endValue = frontmatterText(frontmatter.end)
     const syncedHash = payloadKey({ summary: title, start: startValue, end: endValue, location, description: body })
-    const eventId = frontmatterText(frontmatter.googleEventId)
-    const storedHash = frontmatterText(frontmatter.syncedHash)
 
-    if (eventId && storedHash === syncedHash) continue
+    if (metadata.eventId && metadata.hash === syncedHash) continue
 
     // Notes written before the hash existed cannot be compared, so they are adopted instead of overwriting Google.
-    if (eventId && !storedHash) {
-      await vault.modify(file, setFrontmatter(content, { syncedHash }))
+    if (metadata.eventId && !metadata.hash) {
+      const adopted: NoteMetadata = { ...metadata, title, hash: syncedHash }
+      await vault.modify(file, setFrontmatter(content, { [METADATA_KEY]: serializeMetadata(adopted) }, LEGACY_KEYS))
       continue
     }
 
@@ -334,16 +462,16 @@ const pushNotes = async (
     }
 
     try {
-      const saved = eventId
-        ? await updateCalendarEvent({ accessToken, calendarId: calendar.id, eventId, event })
+      const saved = metadata.eventId
+        ? await updateCalendarEvent({ accessToken, calendarId: calendar.id, eventId: metadata.eventId, event })
         : await createCalendarEvent({ accessToken, calendarId: calendar.id, event })
 
       if (!saved.id) throw new Error("Google did not return the event.")
 
-      const values: Record<string, string> = { googleEventId: saved.id, syncedHash }
-      if (saved.updated) values.googleUpdated = saved.updated
+      const next: NoteMetadata = { ...metadata, title, calendarId: calendar.id, eventId: saved.id, hash: syncedHash }
+      if (saved.updated) next.updated = saved.updated
 
-      await vault.modify(file, setFrontmatter(content, values))
+      await vault.modify(file, setFrontmatter(content, { [METADATA_KEY]: serializeMetadata(next) }, LEGACY_KEYS))
       result.files.set(saved.id, file)
       result.pushed++
     } catch (error) {
@@ -354,22 +482,46 @@ const pushNotes = async (
   return result
 }
 
-const uniqueFilePath = (vault: Vault, folder: string, event: GoogleCalendarEvent): string => {
+export const uniqueNotePath = (vault: Vault, folder: string, base: string, ignore?: string): string => {
   const prefix = folder ? `${folder}/` : ""
-  const base = eventFileName(event)
-  const first = `${prefix}${base}.md`
-  if (!vault.getAbstractFileByPath(first)) return first
+  const taken = (path: string): boolean => {
+    const existing = vault.getAbstractFileByPath(path)
+    if (!existing) return false
 
-  const suffix = sanitizeFileName(event.id).slice(0, 8) || "event"
-  let path = `${prefix}${base} (${suffix}).md`
+    return ignore === undefined || existing.path !== ignore
+  }
+
+  let path = `${prefix}${base}.md`
   let counter = 2
 
-  while (vault.getAbstractFileByPath(path)) {
-    path = `${prefix}${base} (${suffix} ${counter}).md`
+  while (taken(path)) {
+    path = `${prefix}${base} ${counter}.md`
     counter++
   }
 
   return path
+}
+
+export const calendarEventsFolder = (settings: GCalSettings): string =>
+  normalizePath(settings.eventsFolder.trim() || DEFAULT_GCAL_SETTINGS.eventsFolder).replace(/^\/+|\/+$/g, "")
+
+/** Renames a note to the name that start dictates, without talking to Google. Returns false for notes that are not events. */
+export const fixNoteName = async (plugin: ObsidianNotifierPlugin, file: TFile): Promise<boolean> => {
+  const folder = calendarEventsFolder(plugin.settings.googleCalendar)
+  if (!folder || !file.path.startsWith(`${folder}/`)) return false
+
+  const start = frontmatterText(plugin.app.metadataCache.getFileCache(file)?.frontmatter?.start)
+  if (!start) return false
+
+  const title = parseNoteName(file.basename).title
+  if (!title) return false
+
+  const base = noteBaseName(start, title)
+  if (file.basename !== base) {
+    await plugin.app.fileManager.renameFile(file, uniqueNotePath(plugin.app.vault, folder, base, file.path))
+  }
+
+  return true
 }
 
 const fetchEventsPage = async (
@@ -402,8 +554,7 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
   const calendarNames = parseCalendarNames(settings.pullCalendars)
   if (calendarNames.length === 0) throw new Error("Add at least one calendar to sync.")
 
-  const rawFolder = settings.eventsFolder.trim() || DEFAULT_GCAL_SETTINGS.eventsFolder
-  const folder = normalizePath(rawFolder).replace(/^\/+|\/+$/g, "")
+  const folder = calendarEventsFolder(settings)
   const pullDays = settings.pullDays > 0 ? settings.pullDays : DEFAULT_GCAL_SETTINGS.pullDays
   const now = new Date()
   const timeMax = new Date(now.getTime() + pullDays * DAY_MS)
@@ -414,7 +565,7 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
 
   await ensureFolder(vault, folder)
 
-  const push = await pushNotes(plugin, accessToken, entries, folder)
+  const push = await pushNotes(plugin, accessToken, entries, folder, calendars[0]?.id ?? "")
 
   const existing = new Map<string, TFile>()
   const folderPrefix = folder ? `${folder}/` : ""
@@ -472,6 +623,11 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
 
       if (file) {
         const eventUpdated = Date.parse(event.updated ?? "")
+        const metadata = parseNoteMetadata(metadataCache.getFileCache(file)?.frontmatter)
+        const localTitle = parseNoteName(file.basename).title
+        const baseline = metadata?.title ?? ""
+        const keepLocalTitle = localTitle.length > 0 && baseline.length > 0 && localTitle !== baseline
+        const nextTitle = keepLocalTitle ? localTitle : (event.summary ?? "")
 
         if (Number.isFinite(eventUpdated) && eventUpdated > file.stat.mtime) {
           await vault.modify(file, note)
@@ -480,10 +636,13 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
           result.skipped++
         }
 
+        const target = uniqueNotePath(vault, folder, noteBaseName(eventStartValue(event), nextTitle), file.path)
+        if (file.path !== target) await plugin.app.fileManager.renameFile(file, target)
+
         continue
       }
 
-      const created = await vault.create(uniqueFilePath(vault, folder, event), note)
+      const created = await vault.create(uniqueNotePath(vault, folder, eventFileName(event)), note)
       existing.set(event.id, created)
       result.created++
     }

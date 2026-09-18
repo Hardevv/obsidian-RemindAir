@@ -29,17 +29,34 @@ vi.mock("src/google/calendar", () => ({
 import {
   buildEventNote,
   eventFileName,
+  fixNoteName,
+  noteBaseName,
   parseCalendarNames,
+  parseNoteName,
   payloadKey,
   sanitizeFileName,
   syncCalendarEvents,
 } from "src/google/eventsSync"
 
+const metadataOf = (content: string): Record<string, unknown> => {
+  const line = content.split("\n").find((item) => item.startsWith("remindair: "))
+  if (!line) throw new Error("the note has no remindair property")
+
+  return JSON.parse(JSON.parse(line.slice("remindair: ".length)) as string) as Record<string, unknown>
+}
+
 interface FakeFile {
   path: string
+  basename?: string
   stat: { mtime: number }
   frontmatter?: Record<string, unknown>
   content?: string
+}
+
+const withBasename = (file: FakeFile): FakeFile => {
+  file.basename = file.path.split("/").pop()?.replace(/\.md$/, "") ?? ""
+
+  return file
 }
 
 const createVault = (initialFiles: FakeFile[] = []) => {
@@ -48,6 +65,7 @@ const createVault = (initialFiles: FakeFile[] = []) => {
   const created: { path: string; content: string }[] = []
   const modified: { file: FakeFile; content: string }[] = []
   const trashed: FakeFile[] = []
+  const renamed: { file: FakeFile; path: string }[] = []
 
   const vault = {
     getAbstractFileByPath: vi.fn((path: string) => {
@@ -55,7 +73,7 @@ const createVault = (initialFiles: FakeFile[] = []) => {
 
       return files.find((file) => file.path === path) ?? null
     }),
-    getMarkdownFiles: vi.fn(() => files),
+    getMarkdownFiles: vi.fn(() => files.map(withBasename)),
     createFolder: vi.fn(async (path: string) => {
       folders.push(path)
       return {}
@@ -63,7 +81,7 @@ const createVault = (initialFiles: FakeFile[] = []) => {
     read: vi.fn(async (file: FakeFile) => file.content ?? ""),
     getName: vi.fn(() => "Vault"),
     create: vi.fn(async (path: string, content: string) => {
-      const file: FakeFile = { path, stat: { mtime: 0 }, content }
+      const file: FakeFile = withBasename({ path, stat: { mtime: 0 }, content })
       files.push(file)
       created.push({ path, content })
 
@@ -84,7 +102,15 @@ const createVault = (initialFiles: FakeFile[] = []) => {
     getFileCache: vi.fn((file: FakeFile) => (file.frontmatter ? { frontmatter: file.frontmatter } : {})),
   }
 
-  return { vault, metadataCache, files, folders, created, modified, trashed }
+  const fileManager = {
+    renameFile: vi.fn(async (file: FakeFile, path: string) => {
+      file.path = path
+      withBasename(file)
+      renamed.push({ file, path })
+    }),
+  }
+
+  return { vault, metadataCache, fileManager, files, folders, created, modified, trashed, renamed }
 }
 
 const createPlugin = (overrides: Partial<GCalSettings> = {}, initialFiles: FakeFile[] = []) => {
@@ -95,7 +121,7 @@ const createPlugin = (overrides: Partial<GCalSettings> = {}, initialFiles: FakeF
       googleAuth: null,
       calendarSync: { syncTokens: {}, lastSyncAt: 0 },
     },
-    app: { vault: vault.vault, metadataCache: vault.metadataCache },
+    app: { vault: vault.vault, metadataCache: vault.metadataCache, fileManager: vault.fileManager },
     saveSettings: vi.fn(async () => undefined),
   } as unknown as ObsidianNotifierPlugin
 
@@ -131,11 +157,89 @@ describe("sanitizeFileName", () => {
 
 describe("eventFileName", () => {
   it("prefixes the title with the start date", () => {
-    expect(eventFileName(event())).toBe("2026-11-02 Client meeting")
+    expect(eventFileName(event())).toBe("2026-11-02 10-00 │ Client meeting")
   })
 
   it("supports all-day events and missing titles", () => {
-    expect(eventFileName(event({ summary: "", start: { date: "2026-11-11" } }))).toBe("2026-11-11 Untitled event")
+    expect(eventFileName(event({ summary: "", start: { date: "2026-11-11" } }))).toBe("2026-11-11 │ Untitled event")
+  })
+})
+
+describe("noteBaseName", () => {
+  it("adds the date and the time for timed events", () => {
+    expect(noteBaseName("2026-11-02T10:00:00+01:00", "Client meeting")).toBe("2026-11-02 10-00 │ Client meeting")
+  })
+
+  it("keeps only the date for all-day events", () => {
+    expect(noteBaseName("2026-11-02", "Client meeting")).toBe("2026-11-02 │ Client meeting")
+  })
+
+  it("falls back to the title without a start and to a placeholder without a title", () => {
+    expect(noteBaseName("", "Client meeting")).toBe("Client meeting")
+    expect(noteBaseName("2026-11-02", "  ")).toBe("2026-11-02 │ Untitled event")
+  })
+})
+
+describe("parseNoteName", () => {
+  it("splits the date prefix from the title", () => {
+    expect(parseNoteName("2026-11-02 10-00 │ Client meeting")).toEqual({ prefix: "2026-11-02 10-00", title: "Client meeting" })
+    expect(parseNoteName("2026-11-02 │ Client meeting")).toEqual({ prefix: "2026-11-02", title: "Client meeting" })
+  })
+
+  it("still reads the separators used by older names", () => {
+    expect(parseNoteName("2026-11-02 10-00 Client meeting")).toEqual({ prefix: "2026-11-02 10-00", title: "Client meeting" })
+    expect(parseNoteName("2026-11-02 10-00 · Client meeting")).toEqual({ prefix: "2026-11-02 10-00", title: "Client meeting" })
+    expect(parseNoteName("2026-11-02 10-00 | Client meeting")).toEqual({ prefix: "2026-11-02 10-00", title: "Client meeting" })
+  })
+
+  it("keeps a name without a prefix as the title", () => {
+    expect(parseNoteName("Client meeting")).toEqual({ prefix: "", title: "Client meeting" })
+  })
+
+  it("survives a title that looks like a date", () => {
+    expect(parseNoteName("2026-11-02 10-00 │ 2026-12-24")).toEqual({ prefix: "2026-11-02 10-00", title: "2026-12-24" })
+  })
+})
+
+describe("fixNoteName", () => {
+  const note = (path: string, frontmatter: Record<string, unknown>): FakeFile =>
+    withBasename({ path, stat: { mtime: 0 }, frontmatter, content: "" })
+
+  it("puts the date prefix back from start", async () => {
+    const file = note("Calendar/2026-12-24 10-00 │ Client meeting.md", { start: "2026-11-02T10:00:00+01:00" })
+    const { plugin, renamed } = createPlugin({}, [file])
+
+    await expect(fixNoteName(plugin, file as never)).resolves.toBe(true)
+
+    expect(renamed[0]?.path).toBe("Calendar/2026-11-02 10-00 │ Client meeting.md")
+  })
+
+  it("keeps the title the user typed", async () => {
+    const file = note("Calendar/2026-11-02 10-00 │ Sprint review.md", { start: "2026-11-02T10:00:00+01:00" })
+    const { plugin, renamed } = createPlugin({}, [file])
+
+    await fixNoteName(plugin, file as never)
+
+    expect(renamed).toHaveLength(0)
+  })
+
+  it("adds the separator to an old name", async () => {
+    const file = note("Calendar/2026-11-02 10-00 Client meeting.md", { start: "2026-11-02T10:00:00+01:00" })
+    const { plugin, renamed } = createPlugin({}, [file])
+
+    await fixNoteName(plugin, file as never)
+
+    expect(renamed[0]?.path).toBe("Calendar/2026-11-02 10-00 │ Client meeting.md")
+  })
+
+  it("ignores notes outside the folder and notes without a start", async () => {
+    const outside = note("Other/2026-12-24 10-00 │ Client meeting.md", { start: "2026-11-02T10:00:00+01:00" })
+    const noStart = note("Calendar/2026-12-24 10-00 │ Client meeting.md", {})
+    const { plugin, renamed } = createPlugin({}, [outside, noStart])
+
+    await expect(fixNoteName(plugin, outside as never)).resolves.toBe(false)
+    await expect(fixNoteName(plugin, noStart as never)).resolves.toBe(false)
+    expect(renamed).toHaveLength(0)
   })
 })
 
@@ -143,16 +247,22 @@ describe("buildEventNote", () => {
   it("writes the event metadata and the description", () => {
     const note = buildEventNote(event({ recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=WE"] }), "Work", "work-id")
 
-    expect(note).toContain('calendarName: "Work"')
-    expect(note).toContain('googleCalendarId: "work-id"')
-    expect(note).toContain('googleEventId: "event-1"')
-    expect(note).toContain('title: "Client meeting"')
+    expect(note).not.toContain("title:")
     expect(note).toContain('start: "2026-11-02T10:00:00+01:00"')
     expect(note).toContain('end: "2026-11-02T11:00:00+01:00"')
     expect(note).toContain('location: "Office"')
-    expect(note).toContain('googleUpdated: "2026-10-20T10:00:00.000Z"')
-    expect(note).toContain('recurrence:\n  - "RRULE:FREQ=WEEKLY;BYDAY=WE"')
     expect(note.endsWith("Notes\n")).toBe(true)
+
+    const metadata = metadataOf(note)
+    expect(metadata.title).toBe("Client meeting")
+    expect(metadata.calendarName).toBe("Work")
+    expect(metadata.calendarId).toBe("work-id")
+    expect(metadata.eventId).toBe("event-1")
+    expect(metadata.updated).toBe("2026-10-20T10:00:00.000Z")
+    expect(metadata.recurrence).toEqual(["RRULE:FREQ=WEEKLY;BYDAY=WE"])
+    expect(metadata.hash).toEqual(expect.any(String))
+    expect(note).not.toContain("googleEventId")
+    expect(note).not.toContain("syncedHash")
   })
 
   it("strips the obsidian link from the description", () => {
@@ -199,8 +309,20 @@ describe("syncCalendarEvents", () => {
     expect(result).toEqual({ pushed: 0, created: 1, updated: 0, skipped: 0, deleted: 0, errors: [] })
     expect(folders).toContain("Calendar")
     expect(created).toHaveLength(1)
-    expect(created[0].path).toBe("Calendar/2026-11-02 Client meeting.md")
-    expect(created[0].content).toContain('googleEventId: "event-1"')
+    expect(created[0].path).toBe("Calendar/2026-11-02 10-00 │ Client meeting.md")
+    expect(metadataOf(created[0].content).eventId).toBe("event-1")
+  })
+
+  it("adds a counter when two events share the same name", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ id: "event-1" }), event({ id: "event-2" })] })
+    const { plugin, created } = createPlugin()
+
+    await syncCalendarEvents(plugin)
+
+    expect(created.map((item) => item.path)).toEqual([
+      "Calendar/2026-11-02 10-00 │ Client meeting.md",
+      "Calendar/2026-11-02 10-00 │ Client meeting 2.md",
+    ])
   })
 
   it("resolves calendar names from the calendar list", async () => {
@@ -212,7 +334,7 @@ describe("syncCalendarEvents", () => {
     expect(google.fetchCalendarEventsPage).toHaveBeenCalledWith(
       expect.objectContaining({ calendarId: "work@group.calendar.google.com" }),
     )
-    expect(created[0].content).toContain('calendarName: "Work"')
+    expect(metadataOf(created[0].content).calendarName).toBe("Work")
   })
 
   it("uses the configured entry as a calendar id when it cannot be resolved", async () => {
@@ -226,9 +348,9 @@ describe("syncCalendarEvents", () => {
 
   it("updates an existing note when the Google event is newer", async () => {
     const file: FakeFile = {
-      path: "Calendar/2026-11-02 Client meeting.md",
+      path: "Calendar/2026-11-02 10-00 │ Client meeting.md",
       stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
-      frontmatter: { googleEventId: "event-1" },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1" }) },
     }
     const { plugin, modified } = createPlugin({}, [file])
 
@@ -241,9 +363,9 @@ describe("syncCalendarEvents", () => {
 
   it("skips an existing note when it is newer than the Google event", async () => {
     const file: FakeFile = {
-      path: "Calendar/2026-11-02 Client meeting.md",
+      path: "Calendar/2026-11-02 10-00 │ Client meeting.md",
       stat: { mtime: Date.parse("2026-11-01T00:00:00.000Z") },
-      frontmatter: { googleEventId: "event-1" },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1" }) },
     }
     const { plugin, modified } = createPlugin({}, [file])
 
@@ -253,11 +375,53 @@ describe("syncCalendarEvents", () => {
     expect(modified).toHaveLength(0)
   })
 
+  it("keeps the title the user gave the file name", async () => {
+    const file: FakeFile = {
+      path: "Calendar/2026-11-02 10-00 │ Sprint review.md",
+      stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1", title: "Client meeting" }) },
+    }
+    const { plugin, modified, renamed } = createPlugin({}, [file])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(result.updated).toBe(1)
+    expect(modified).toHaveLength(1)
+    expect(renamed.map((item) => item.path)).toEqual([])
+  })
+
+  it("renames the note when the title changes in Google", async () => {
+    const file: FakeFile = {
+      path: "Calendar/2026-11-02 10-00 │ Client meeting.md",
+      stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1", title: "Client meeting" }) },
+    }
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ summary: "Client meeting v2" })] })
+    const { plugin, renamed } = createPlugin({}, [file])
+
+    await syncCalendarEvents(plugin)
+
+    expect(renamed[0]?.path).toBe("Calendar/2026-11-02 10-00 │ Client meeting v2.md")
+  })
+
+  it("moves the date prefix when the event is rescheduled in Google", async () => {
+    const file: FakeFile = {
+      path: "Calendar/2026-12-24 10-00 │ Client meeting.md",
+      stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1", title: "Client meeting" }) },
+    }
+    const { plugin, renamed } = createPlugin({}, [file])
+
+    await syncCalendarEvents(plugin)
+
+    expect(renamed[0]?.path).toBe("Calendar/2026-11-02 10-00 │ Client meeting.md")
+  })
+
   it("ignores notes from other folders", async () => {
     const file: FakeFile = {
-      path: "Other/2026-11-02 Client meeting.md",
+      path: "Other/2026-11-02 │ Client meeting.md",
       stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
-      frontmatter: { googleEventId: "event-1" },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1" }) },
     }
     const { plugin, created, modified } = createPlugin({}, [file])
 
@@ -340,9 +504,9 @@ describe("syncCalendarEvents", () => {
 
   it("deletes the note when Google reports a cancelled event", async () => {
     const file: FakeFile = {
-      path: "Calendar/2026-11-02 Client meeting.md",
+      path: "Calendar/2026-11-02 10-00 │ Client meeting.md",
       stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
-      frontmatter: { googleEventId: "event-1" },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1" }) },
     }
     google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ status: "cancelled" })] })
     const { plugin, trashed } = createPlugin({}, [file])
@@ -384,10 +548,14 @@ const eventNote = (frontmatter: Record<string, unknown>, body = "Notes"): string
   return `---\n${lines.join("\n")}\n---\n\n${body}\n`
 }
 
-const newEventNote = (overrides: Record<string, unknown> = {}, body = "Notes"): FakeFile => {
-  const frontmatter = { googleCalendarId: "primary", title: "New idea", start: "2026-11-05T09:00:00+01:00", ...overrides }
+const newEventNote = (
+  overrides: Record<string, unknown> = {},
+  body = "Notes",
+  basename = "2026-11-05 09-00 │ New idea",
+): FakeFile => {
+  const frontmatter = { start: "2026-11-05T09:00:00+01:00", ...overrides }
 
-  return { path: "Calendar/New idea.md", stat: { mtime: 0 }, frontmatter, content: eventNote(frontmatter, body) }
+  return { path: `Calendar/${basename}.md`, stat: { mtime: 0 }, frontmatter, content: eventNote(frontmatter, body) }
 }
 
 describe("push", () => {
@@ -402,16 +570,19 @@ describe("push", () => {
       calendarId: "primary",
       event: {
         summary: "New idea",
-        description: "Notes\n\nobsidian://open?vault=Vault&file=Calendar%2FNew%20idea",
+        description: "Notes\n\nobsidian://open?vault=Vault&file=Calendar%2F2026-11-05%2009-00%20%E2%94%82%20New%20idea",
         location: undefined,
         start: { dateTime: "2026-11-05T09:00:00+01:00" },
         end: { dateTime: "2026-11-05T09:00:00.000Z" },
       },
     })
     expect(result.pushed).toBe(1)
-    expect(modified[0].content).toContain('googleEventId: "created-1"')
-    expect(modified[0].content).toContain('googleUpdated: "2026-10-28T10:00:00.000Z"')
-    expect(modified[0].content).toContain("syncedHash:")
+    expect(metadataOf(modified[0].content)).toMatchObject({
+      calendarId: "primary",
+      eventId: "created-1",
+      updated: "2026-10-28T10:00:00.000Z",
+    })
+    expect(metadataOf(modified[0].content).hash).toEqual(expect.any(String))
   })
 
   it("does not duplicate the note when the pull returns the created event", async () => {
@@ -426,11 +597,10 @@ describe("push", () => {
     expect(created).toHaveLength(0)
   })
 
-  it("skips notes without a calendar, a title or a start", async () => {
+  it("skips notes without a start", async () => {
     const files: FakeFile[] = [
-      { path: "Calendar/a.md", stat: { mtime: 0 }, frontmatter: { title: "x", start: "2026-11-05" } },
-      { path: "Calendar/b.md", stat: { mtime: 0 }, frontmatter: { googleCalendarId: "primary", start: "2026-11-05" } },
-      { path: "Calendar/c.md", stat: { mtime: 0 }, frontmatter: { googleCalendarId: "primary", title: "x" } },
+      { path: "Calendar/a.md", stat: { mtime: 0 }, frontmatter: {} },
+      { path: "Calendar/b.md", stat: { mtime: 0 }, frontmatter: { location: "Office" } },
     ]
     const { plugin } = createPlugin({}, files)
 
@@ -439,8 +609,71 @@ describe("push", () => {
     expect(google.createCalendarEvent).not.toHaveBeenCalled()
   })
 
-  it("skips notes that already have a google event id", async () => {
-    const { plugin } = createPlugin({}, [newEventNote({ googleEventId: "event-1" })])
+  it("takes the title from the file name", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [] })
+    const { plugin } = createPlugin({}, [newEventNote({}, "Notes", "2026-11-05 09-00 │ Sprint review")])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({ event: expect.objectContaining({ summary: "Sprint review" }) }))
+  })
+
+  it("adds the separator to a name from an older version", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [] })
+    const { plugin, renamed } = createPlugin({}, [newEventNote({}, "Notes", "2026-11-05 09-00 New idea")])
+
+    await syncCalendarEvents(plugin)
+
+    expect(renamed[0]?.path).toBe("Calendar/2026-11-05 09-00 │ New idea.md")
+  })
+
+  it("puts the date prefix back when the file name was changed", async () => {
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [] })
+    const { plugin, renamed } = createPlugin({}, [newEventNote({}, "Notes", "2026-12-24 18-00 │ New idea")])
+
+    await syncCalendarEvents(plugin)
+
+    expect(renamed[0]?.path).toBe("Calendar/2026-11-05 09-00 │ New idea.md")
+    expect(google.createCalendarEvent).toHaveBeenCalledWith(expect.objectContaining({ event: expect.objectContaining({ summary: "New idea" }) }))
+  })
+
+  it("prefers googleCalendarId over the default calendar", async () => {
+    google.fetchCalendarList.mockResolvedValue([
+      { id: "primary", summary: "Me", primary: true },
+      { id: "work@group.calendar.google.com", summary: "Work" },
+    ])
+    const { plugin } = createPlugin({}, [newEventNote({ googleCalendarId: "Work" })])
+
+    await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ calendarId: "work@group.calendar.google.com" }),
+    )
+  })
+
+  it("keeps the googleCalendarId the user wrote", async () => {
+    google.fetchCalendarList.mockResolvedValue([
+      { id: "primary", summary: "Me", primary: true },
+      { id: "work@group.calendar.google.com", summary: "Work" },
+    ])
+    const { plugin, modified } = createPlugin({}, [newEventNote({ googleCalendarId: "Work" })])
+
+    await syncCalendarEvents(plugin)
+
+    expect(modified[0].content).toContain('googleCalendarId: "Work"')
+  })
+
+  it("reports a note with a broken metadata property", async () => {
+    const { plugin } = createPlugin({}, [newEventNote({ remindair: "not json" })])
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(google.createCalendarEvent).not.toHaveBeenCalled()
+    expect(result.errors).toEqual(["Calendar/2026-11-05 09-00 │ New idea.md: the remindair property is not valid JSON."])
+  })
+
+  it("skips notes that already have an event id", async () => {
+    const { plugin } = createPlugin({}, [newEventNote({ remindair: JSON.stringify({ eventId: "event-1" }) })])
 
     await syncCalendarEvents(plugin)
 
@@ -478,27 +711,33 @@ describe("push", () => {
     )
   })
 
-  it("keeps a note without a google event id when the push fails", async () => {
+  it("keeps a note without an event id when the push fails", async () => {
     google.createCalendarEvent.mockRejectedValue(new Error("Google Calendar request failed: offline"))
     const { plugin, modified } = createPlugin({}, [newEventNote()])
 
     const result = await syncCalendarEvents(plugin)
 
     expect(result.pushed).toBe(0)
-    expect(result.errors).toEqual(["Calendar/New idea.md: Google Calendar request failed: offline"])
+    expect(result.errors).toEqual(["Calendar/2026-11-05 09-00 │ New idea.md: Google Calendar request failed: offline"])
     expect(modified).toHaveLength(0)
   })
 
-  const existingNote = (extra: Record<string, unknown> = {}, mtime = Date.parse("2026-11-01T00:00:00.000Z")) => {
+  const existingNote = (
+    metadata: Record<string, unknown> = {},
+    mtime = Date.parse("2026-11-01T00:00:00.000Z"),
+    basename = "2026-11-05 09-00 │ New idea",
+  ) => {
     const frontmatter = {
-      googleCalendarId: "primary",
-      googleEventId: "event-1",
-      title: "New idea",
       start: "2026-11-05T09:00:00+01:00",
-      ...extra,
+      remindair: JSON.stringify({ title: "New idea", eventId: "event-1", ...metadata }),
     }
 
-    return { path: "Calendar/New idea.md", stat: { mtime }, frontmatter, content: eventNote(frontmatter) } as FakeFile
+    return {
+      path: `Calendar/${basename}.md`,
+      stat: { mtime },
+      frontmatter,
+      content: eventNote(frontmatter),
+    } as FakeFile
   }
 
   const currentHash = (): string =>
@@ -511,7 +750,7 @@ describe("push", () => {
     })
 
   it("patches the google event when the note changed", async () => {
-    const { plugin, modified } = createPlugin({}, [existingNote({ syncedHash: "stale" })])
+    const { plugin, modified } = createPlugin({}, [existingNote({ hash: "stale" })])
 
     const result = await syncCalendarEvents(plugin)
 
@@ -522,11 +761,11 @@ describe("push", () => {
       event: expect.objectContaining({ summary: "New idea" }),
     })
     expect(result.pushed).toBe(1)
-    expect(modified[0].content).toContain(`syncedHash: ${JSON.stringify(currentHash())}`)
+    expect(metadataOf(modified[0].content).hash).toBe(currentHash())
   })
 
   it("sends nothing when the note matches the last push", async () => {
-    const { plugin, modified } = createPlugin({}, [existingNote({ syncedHash: currentHash() })])
+    const { plugin, modified } = createPlugin({}, [existingNote({ hash: currentHash() })])
 
     await syncCalendarEvents(plugin)
 
@@ -535,23 +774,23 @@ describe("push", () => {
     expect(modified).toHaveLength(0)
   })
 
-  it("adopts a note that has no synced hash instead of overwriting google", async () => {
+  it("adopts a note that has no hash instead of overwriting google", async () => {
     const { plugin, modified } = createPlugin({}, [existingNote()])
 
     await syncCalendarEvents(plugin)
 
     expect(google.updateCalendarEvent).not.toHaveBeenCalled()
-    expect(modified[0].content).toContain(`syncedHash: ${JSON.stringify(currentHash())}`)
+    expect(metadataOf(modified[0].content).hash).toBe(currentHash())
   })
 
   it("keeps the note when the update fails", async () => {
     google.updateCalendarEvent.mockRejectedValue(new Error("Google Calendar request failed: offline"))
-    const { plugin, modified } = createPlugin({}, [existingNote({ syncedHash: "stale" })])
+    const { plugin, modified } = createPlugin({}, [existingNote({ hash: "stale" })])
 
     const result = await syncCalendarEvents(plugin)
 
     expect(result.pushed).toBe(0)
-    expect(result.errors).toEqual(["Calendar/New idea.md: Google Calendar request failed: offline"])
+    expect(result.errors).toEqual(["Calendar/2026-11-05 09-00 │ New idea.md: Google Calendar request failed: offline"])
     expect(modified).toHaveLength(0)
   })
 
@@ -561,7 +800,7 @@ describe("push", () => {
     const result = await syncCalendarEvents(plugin)
 
     expect(google.createCalendarEvent).not.toHaveBeenCalled()
-    expect(result.errors).toEqual(["Calendar/New idea.md: start is not a valid date."])
+    expect(result.errors).toEqual(["Calendar/2026-11-05 09-00 │ New idea.md: start is not a valid date."])
   })
 })
 

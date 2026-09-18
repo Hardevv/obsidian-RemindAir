@@ -61,8 +61,8 @@ const createPlugin = (editor?: Editor) => {
   const saveSettings = vi.fn(async () => {})
 
   const plugin = {
-    app: { workspace: { getActiveViewOfType } },
-    settings: { idCounter: 7 },
+    app: { workspace: { getActiveViewOfType, getActiveFile: () => null }, fileManager: { processFrontMatter: vi.fn() } },
+    settings: { idCounter: 7, googleCalendar: {} },
     addCommand,
     saveSettings,
   } as unknown as ObsidianNotifierPlugin
@@ -134,15 +134,16 @@ describe("registerCommands", () => {
     vi.clearAllMocks()
   })
 
-  it("registers both commands", () => {
+  it("registers every command", () => {
     const { plugin, addCommand } = createPlugin()
 
     registerCommands(plugin)
 
-    expect(addCommand).toHaveBeenCalledTimes(2)
+    expect(addCommand).toHaveBeenCalledTimes(3)
     expect(addCommand.mock.calls.map(([command]) => command.id)).toEqual([
       `${PLUGIN_NAME}_set-reminder`,
       `${PLUGIN_NAME}_edit-reminder-at-cursor`,
+      `${PLUGIN_NAME}_create-event-properties`,
     ])
   })
 
@@ -154,6 +155,7 @@ describe("registerCommands", () => {
     expect(addCommand.mock.calls.map(([command]) => command.name)).toEqual([
       "🔔 Remind me! - set reminder for this line",
       "🔔 Edit reminder! - edit reminder in this line",
+      "Create calendar event - from the selection or this note",
     ])
   })
 
