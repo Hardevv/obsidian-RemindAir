@@ -4,6 +4,7 @@ import {
   DEFAULT_MAX_RESULTS,
   SyncTokenExpiredError,
   createCalendarEvent,
+  deleteCalendarEvent,
   fetchCalendarEvents,
   fetchCalendarEventsPage,
   fetchCalendarList,
@@ -194,6 +195,40 @@ describe("updateCalendarEvent", () => {
     await expect(
       updateCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1", event }),
     ).rejects.toThrow("Google Calendar request failed: Not Found")
+  })
+})
+
+describe("deleteCalendarEvent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("sends a delete for the event", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response(undefined, 204))
+
+    await deleteCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1" })
+
+    const params = requestParams()
+    const url = new URL(params.url)
+    expect(params.method).toBe("DELETE")
+    expect(url.pathname).toBe("/calendar/v3/calendars/primary/events/event-1")
+    expect(params.headers).toEqual({ Authorization: "Bearer access-token" })
+  })
+
+  it("treats a missing event as deleted", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: "gone" }, 404))
+
+    await expect(deleteCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1" })).resolves.toBeUndefined()
+
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: "gone" }, 410))
+
+    await expect(deleteCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1" })).resolves.toBeUndefined()
+  })
+
+  it("throws on a real failure", async () => {
+    vi.mocked(requestUrl).mockResolvedValue(response({ error: { message: "nope" } }, 403))
+
+    await expect(deleteCalendarEvent({ accessToken: "access-token", calendarId: "primary", eventId: "event-1" })).rejects.toThrow()
   })
 })
 

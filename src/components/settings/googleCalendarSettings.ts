@@ -161,6 +161,16 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
     )
 
   new Setting(containerEl)
+    .setName("Delete events with notes")
+    .setDesc("Deleting a note in the events folder deletes its event in Google Calendar. Google keeps deleted events in the trash for 30 days.")
+    .addToggle((toggle) =>
+      toggle.setValue(gcal.deleteEventsWithNotes).onChange(async (value) => {
+        gcal.deleteEventsWithNotes = value
+        await plugin.saveSettings()
+      }),
+    )
+
+  new Setting(containerEl)
     .setName("Force pull from Google")
     .setDesc("Overwrites notes with the Google version even when the note is newer.")
     .addButton((button) => button.setButtonText("Pull").setDisabled(true))

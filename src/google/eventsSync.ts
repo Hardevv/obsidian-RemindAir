@@ -2,6 +2,7 @@ import type ObsidianNotifierPlugin from "main"
 import { normalizePath, type MetadataCache, type TFile, type Vault } from "obsidian"
 import {
   createCalendarEvent,
+  deleteCalendarEvent,
   fetchCalendarEventsPage,
   fetchCalendarList,
   SyncTokenExpiredError,
@@ -15,7 +16,7 @@ import {
 import { getGoogleAccessToken } from "src/settings/googleAccount"
 import { GOOGLE_REQUIRED_SCOPES, hasGoogleScopes } from "src/google/oauth"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
-import type { GCalSettings } from "src/types"
+import type { GCalSettings, SyncedNote } from "src/types"
 
 const MAX_FILE_NAME_LENGTH = 80
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -502,6 +503,68 @@ export const uniqueNotePath = (vault: Vault, folder: string, base: string, ignor
   return path
 }
 
+// Notes trashed by the pull must not look like a user deletion.
+const syncTrash = new Set<string>()
+
+export const isSyncTrash = (path: string): boolean => syncTrash.has(path)
+
+export const clearSyncTrash = (): void => syncTrash.clear()
+
+/** Remembers that this note is an event, so deleting it can still reach Google. */
+export const queueNoteDeletion = async (plugin: ObsidianNotifierPlugin, path: string): Promise<boolean> => {
+  if (!plugin.settings.googleCalendar.deleteEventsWithNotes) return false
+
+  const note = plugin.settings.calendarSync.notes[path]
+  if (!note) return false
+
+  delete plugin.settings.calendarSync.notes[path]
+
+  const queued = plugin.settings.calendarSync.pendingDeletes
+  if (!queued.some((item) => item.eventId === note.eventId && item.calendarId === note.calendarId)) {
+    queued.push({ ...note })
+  }
+
+  await plugin.saveSettings()
+
+  return true
+}
+
+const flushPendingDeletes = async (plugin: ObsidianNotifierPlugin, accessToken: string, errors: string[]): Promise<void> => {
+  const queued = plugin.settings.calendarSync.pendingDeletes
+  if (queued.length === 0) return
+
+  const left: typeof queued = []
+
+  for (const item of queued) {
+    try {
+      await deleteCalendarEvent({ accessToken, calendarId: item.calendarId, eventId: item.eventId })
+    } catch (error) {
+      left.push(item)
+      errors.push(`${item.eventId}: ${error instanceof Error ? error.message : "could not delete the event"}`)
+    }
+  }
+
+  plugin.settings.calendarSync.pendingDeletes = left
+}
+
+/** Event notes as they are on disk, so a note that disappears can still be traced back to its event. */
+const collectEventNotes = (plugin: ObsidianNotifierPlugin, folder: string): Record<string, SyncedNote> => {
+  const notes: Record<string, SyncedNote> = {}
+  const folderPrefix = folder ? `${folder}/` : ""
+
+  for (const file of plugin.app.vault.getMarkdownFiles()) {
+    if (!file.path.startsWith(folderPrefix)) continue
+
+    const eventId = readEventId(file, plugin.app.metadataCache)
+    if (!eventId) continue
+
+    const calendarId = parseNoteMetadata(plugin.app.metadataCache.getFileCache(file)?.frontmatter)?.calendarId ?? ""
+    if (calendarId) notes[file.path] = { eventId, calendarId }
+  }
+
+  return notes
+}
+
 export const calendarEventsFolder = (settings: GCalSettings): string =>
   normalizePath(settings.eventsFolder.trim() || DEFAULT_GCAL_SETTINGS.eventsFolder).replace(/^\/+|\/+$/g, "")
 
@@ -564,6 +627,10 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
   const metadataCache = plugin.app.metadataCache
 
   await ensureFolder(vault, folder)
+  clearSyncTrash()
+
+  const deleteErrors: string[] = []
+  await flushPendingDeletes(plugin, accessToken, deleteErrors)
 
   const push = await pushNotes(plugin, accessToken, entries, folder, calendars[0]?.id ?? "")
 
@@ -583,7 +650,7 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
     updated: 0,
     skipped: 0,
     deleted: 0,
-    errors: [...push.errors],
+    errors: [...deleteErrors, ...push.errors],
   }
   const syncTokens = plugin.settings.calendarSync.syncTokens
 
@@ -613,6 +680,7 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
       if (event.status === "cancelled") {
         if (!file) continue
 
+        syncTrash.add(file.path)
         await vault.trash(file, true)
         existing.delete(event.id)
         result.deleted++
@@ -649,6 +717,7 @@ const runSync = async (plugin: ObsidianNotifierPlugin): Promise<EventSyncResult>
   }
 
   plugin.settings.calendarSync.lastSyncAt = Date.now()
+  plugin.settings.calendarSync.notes = collectEventNotes(plugin, folder)
   await plugin.saveSettings()
 
   return result

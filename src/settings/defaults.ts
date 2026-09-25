@@ -1,4 +1,4 @@
-import type { CalendarSyncState, GCalSettings, GoogleAuthState, PluginSettings } from "src/types"
+import type { CalendarSyncState, GCalSettings, GoogleAuthState, PluginSettings, SyncedNote } from "src/types"
 
 export const DEFAULT_GCAL_SETTINGS: GCalSettings = {
   accountEmail: "",
@@ -7,12 +7,15 @@ export const DEFAULT_GCAL_SETTINGS: GCalSettings = {
   eventsFolder: "Calendar",
   autoSyncSeconds: 45,
   addObsidianLink: true,
+  deleteEventsWithNotes: true,
   taskListName: "@default",
 }
 
 export const DEFAULT_CALENDAR_SYNC_STATE: CalendarSyncState = {
   syncTokens: {},
   lastSyncAt: 0,
+  notes: {},
+  pendingDeletes: [],
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -39,16 +42,32 @@ export function normalizeGCalSettings(stored?: StoredGCalSettings | null): GCalS
     eventsFolder: stored?.eventsFolder ?? DEFAULT_GCAL_SETTINGS.eventsFolder,
     autoSyncSeconds: stored?.autoSyncSeconds ?? legacySeconds ?? DEFAULT_GCAL_SETTINGS.autoSyncSeconds,
     addObsidianLink: stored?.addObsidianLink ?? DEFAULT_GCAL_SETTINGS.addObsidianLink,
+    deleteEventsWithNotes: stored?.deleteEventsWithNotes ?? DEFAULT_GCAL_SETTINGS.deleteEventsWithNotes,
     taskListName: stored?.taskListName ?? DEFAULT_GCAL_SETTINGS.taskListName,
   }
 }
 
+const isSyncedNote = (value: unknown): value is SyncedNote =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as SyncedNote).eventId === "string" &&
+  typeof (value as SyncedNote).calendarId === "string"
+
 export const normalizeCalendarSync = (stored?: Partial<CalendarSyncState> | null): CalendarSyncState => {
   const tokens = stored?.syncTokens
+  const notes: Record<string, SyncedNote> = {}
+
+  if (stored?.notes && typeof stored.notes === "object") {
+    for (const [path, note] of Object.entries(stored.notes)) {
+      if (isSyncedNote(note)) notes[path] = { eventId: note.eventId, calendarId: note.calendarId }
+    }
+  }
 
   return {
     syncTokens: tokens && typeof tokens === "object" ? { ...tokens } : {},
     lastSyncAt: typeof stored?.lastSyncAt === "number" ? stored.lastSyncAt : 0,
+    notes,
+    pendingDeletes: Array.isArray(stored?.pendingDeletes) ? stored.pendingDeletes.filter(isSyncedNote).map((note) => ({ ...note })) : [],
   }
 }
 

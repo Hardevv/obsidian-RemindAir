@@ -18,6 +18,7 @@ describe("DEFAULT_GCAL_SETTINGS", () => {
       eventsFolder: "Calendar",
       autoSyncSeconds: 45,
       addObsidianLink: true,
+      deleteEventsWithNotes: true,
       taskListName: "@default",
     })
   })
@@ -41,7 +42,7 @@ describe("DEFAULT_SETTINGS", () => {
 
   it("starts without calendar sync state", () => {
     expect(DEFAULT_SETTINGS.calendarSync).toBe(DEFAULT_CALENDAR_SYNC_STATE)
-    expect(DEFAULT_CALENDAR_SYNC_STATE).toEqual({ syncTokens: {}, lastSyncAt: 0 })
+    expect(DEFAULT_CALENDAR_SYNC_STATE).toEqual({ syncTokens: {}, lastSyncAt: 0, notes: {}, pendingDeletes: [] })
   })
 })
 
@@ -52,13 +53,18 @@ describe("normalizeCalendarSync", () => {
   })
 
   it("keeps the stored tokens and timestamp", () => {
-    const stored: CalendarSyncState = { syncTokens: { primary: "token-1" }, lastSyncAt: 1_700_000_000_000 }
+    const stored: CalendarSyncState = {
+      syncTokens: { primary: "token-1" },
+      lastSyncAt: 1_700_000_000_000,
+      notes: {},
+      pendingDeletes: [],
+    }
 
     expect(normalizeCalendarSync(stored)).toEqual(stored)
   })
 
   it("copies the tokens so the stored object is not shared", () => {
-    const stored: CalendarSyncState = { syncTokens: { primary: "token-1" }, lastSyncAt: 0 }
+    const stored: CalendarSyncState = { syncTokens: { primary: "token-1" }, lastSyncAt: 0, notes: {}, pendingDeletes: [] }
     const result = normalizeCalendarSync(stored)
 
     result.syncTokens.work = "token-2"
@@ -70,6 +76,8 @@ describe("normalizeCalendarSync", () => {
     expect(normalizeCalendarSync({ syncTokens: "nope" as unknown as Record<string, string> })).toEqual({
       syncTokens: {},
       lastSyncAt: 0,
+      notes: {},
+      pendingDeletes: [],
     })
   })
 })
@@ -88,6 +96,7 @@ describe("normalizeGCalSettings", () => {
       eventsFolder: "Calendar/Events",
       autoSyncSeconds: 900,
       addObsidianLink: false,
+      deleteEventsWithNotes: false,
       taskListName: "Tasks",
     }
 

@@ -1,6 +1,6 @@
 import type ObsidianNotifierPlugin from "main"
 import { Notice, type TFile } from "obsidian"
-import { fixNoteName, syncCalendarEvents } from "src/google/eventsSync"
+import { fixNoteName, isSyncTrash, queueNoteDeletion, syncCalendarEvents } from "src/google/eventsSync"
 import { PLUGIN_NAME } from "src/utils/constants"
 
 export const SYNC_HEARTBEAT_ACTIVE_MS = 15 * 1000
@@ -12,7 +12,7 @@ export const SYNC_STARTUP_DELAY_MS = 3 * 1000
 // Rapid window switching should not turn into one request per focus.
 export const FORCED_SYNC_MIN_GAP_MS = 10 * 1000
 // A rename changes the event title, so it is worth a sync, but only once the name settles.
-export const RENAME_SYNC_DELAY_MS = 1000
+export const PUSH_SYNC_DELAY_MS = 1000
 
 export interface SyncGateInput {
   connected: boolean
@@ -56,7 +56,7 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
   let running = false
   let stopped = false
   let lastForcedAt = 0
-  let renameTimer: number | undefined
+  let pushTimer: number | undefined
   let forcedRetryTimer: number | undefined
   let lastError: string | null = null
 
@@ -155,13 +155,13 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
     void tick(force)
   }
 
-  const scheduleRenameSync = (): void => {
-    if (renameTimer !== undefined) window.clearTimeout(renameTimer)
+  const schedulePushSync = (): void => {
+    if (pushTimer !== undefined) window.clearTimeout(pushTimer)
 
-    renameTimer = window.setTimeout(() => {
-      renameTimer = undefined
+    pushTimer = window.setTimeout(() => {
+      pushTimer = undefined
       wake(true)
-    }, RENAME_SYNC_DELAY_MS)
+    }, PUSH_SYNC_DELAY_MS)
   }
 
   // Renaming a note is instant feedback: the date prefix is put back locally, then the new title is pushed.
@@ -172,7 +172,18 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
       console.debug(`${PLUGIN_NAME}: note renamed, checking the event name`, file.path)
       void fixNoteName(plugin, file as TFile).then((isEventNote) => {
         // Renames done by the sync itself are already covered by the pull that made them.
-        if (isEventNote && !running) scheduleRenameSync()
+        if (isEventNote && !running) schedulePushSync()
+      })
+    }),
+  )
+
+  // Deleting a note deletes its event, but the deletion is queued so it also works offline.
+  plugin.registerEvent(
+    plugin.app.vault.on("delete", (file) => {
+      if (!file.path.endsWith(".md") || isSyncTrash(file.path)) return
+
+      void queueNoteDeletion(plugin, file.path).then((queued) => {
+        if (queued && !running) schedulePushSync()
       })
     }),
   )
@@ -188,7 +199,7 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
   plugin.register(() => {
     stopped = true
     if (timer !== undefined) window.clearTimeout(timer)
-    if (renameTimer !== undefined) window.clearTimeout(renameTimer)
+    if (pushTimer !== undefined) window.clearTimeout(pushTimer)
     if (forcedRetryTimer !== undefined) window.clearTimeout(forcedRetryTimer)
   })
 

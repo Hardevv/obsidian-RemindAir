@@ -38,6 +38,7 @@ const DEFAULT_GCAL: GCalSettings = {
   eventsFolder: "Calendar",
   autoSyncSeconds: 0,
   addObsidianLink: true,
+  deleteEventsWithNotes: true,
   taskListName: "@default",
 }
 
@@ -229,6 +230,7 @@ describe("displayGoogleCalendarSettings", () => {
         "Auto sync",
         "Google task list",
         "Add note link",
+        "Delete events with notes",
         "Force pull from Google",
         "Force push to Google",
         "Sync now",

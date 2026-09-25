@@ -12,12 +12,22 @@ export interface GCalSettings {
   eventsFolder: string
   autoSyncSeconds: number
   addObsidianLink: boolean
+  deleteEventsWithNotes: boolean
   taskListName: string
+}
+
+export interface SyncedNote {
+  eventId: string
+  calendarId: string
 }
 
 export interface CalendarSyncState {
   syncTokens: Record<string, string>
   lastSyncAt: number
+  /** Path to event, so a deleted note can still be matched with its event. */
+  notes: Record<string, SyncedNote>
+  /** Deletions that still have to reach Google. */
+  pendingDeletes: SyncedNote[]
 }
 
 export interface PluginSettings {

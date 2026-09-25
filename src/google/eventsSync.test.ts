@@ -14,6 +14,7 @@ const google = vi.hoisted(() => {
     fetchCalendarList: vi.fn(),
     createCalendarEvent: vi.fn(),
     updateCalendarEvent: vi.fn(),
+    deleteCalendarEvent: vi.fn(),
   }
 })
 
@@ -24,12 +25,15 @@ vi.mock("src/google/calendar", () => ({
   fetchCalendarList: google.fetchCalendarList,
   createCalendarEvent: google.createCalendarEvent,
   updateCalendarEvent: google.updateCalendarEvent,
+  deleteCalendarEvent: google.deleteCalendarEvent,
 }))
 
 import {
   buildEventNote,
   eventFileName,
   fixNoteName,
+  isSyncTrash,
+  queueNoteDeletion,
   noteBaseName,
   parseCalendarNames,
   parseNoteName,
@@ -119,7 +123,7 @@ const createPlugin = (overrides: Partial<GCalSettings> = {}, initialFiles: FakeF
     settings: {
       googleCalendar: { ...DEFAULT_GCAL_SETTINGS, ...overrides },
       googleAuth: null,
-      calendarSync: { syncTokens: {}, lastSyncAt: 0 },
+      calendarSync: { syncTokens: {}, lastSyncAt: 0, notes: {}, pendingDeletes: [] },
     },
     app: { vault: vault.vault, metadataCache: vault.metadataCache, fileManager: vault.fileManager },
     saveSettings: vi.fn(async () => undefined),
@@ -198,6 +202,49 @@ describe("parseNoteName", () => {
 
   it("survives a title that looks like a date", () => {
     expect(parseNoteName("2026-11-02 10-00 │ 2026-12-24")).toEqual({ prefix: "2026-11-02 10-00", title: "2026-12-24" })
+  })
+})
+
+describe("queueNoteDeletion", () => {
+  const plugin = () => {
+    const created = createPlugin()
+
+    created.plugin.settings.calendarSync.notes = {
+      "Calendar/2026-11-02 10-00 │ Client meeting.md": { eventId: "event-1", calendarId: "primary" },
+    }
+
+    return created
+  }
+
+  it("queues the event and forgets the note", async () => {
+    const { plugin: instance } = plugin()
+
+    await expect(queueNoteDeletion(instance, "Calendar/2026-11-02 10-00 │ Client meeting.md")).resolves.toBe(true)
+
+    expect(instance.settings.calendarSync.pendingDeletes).toEqual([{ eventId: "event-1", calendarId: "primary" }])
+    expect(instance.settings.calendarSync.notes).toEqual({})
+    expect(instance.saveSettings).toHaveBeenCalled()
+  })
+
+  it("queues the same event once", async () => {
+    const { plugin: instance } = plugin()
+    const path = "Calendar/2026-11-02 10-00 │ Client meeting.md"
+
+    await queueNoteDeletion(instance, path)
+    instance.settings.calendarSync.notes[path] = { eventId: "event-1", calendarId: "primary" }
+    await queueNoteDeletion(instance, path)
+
+    expect(instance.settings.calendarSync.pendingDeletes).toHaveLength(1)
+  })
+
+  it("does nothing for an unknown note or a disabled setting", async () => {
+    const { plugin: instance } = plugin()
+    instance.settings.googleCalendar.deleteEventsWithNotes = false
+
+    await expect(queueNoteDeletion(instance, "Calendar/2026-11-02 10-00 │ Client meeting.md")).resolves.toBe(false)
+    await expect(queueNoteDeletion(instance, "Calendar/unknown.md")).resolves.toBe(false)
+
+    expect(instance.settings.calendarSync.pendingDeletes).toEqual([])
   })
 })
 
@@ -299,6 +346,7 @@ describe("syncCalendarEvents", () => {
     google.fetchCalendarEventsPage.mockResolvedValue({ events: [event()], nextSyncToken: "token-1" })
     google.createCalendarEvent.mockResolvedValue({ id: "created-1", updated: "2026-10-28T10:00:00.000Z" })
     google.updateCalendarEvent.mockResolvedValue({ id: "event-1", updated: "2026-10-28T10:00:00.000Z" })
+    google.deleteCalendarEvent.mockResolvedValue(undefined)
   })
 
   it("creates a note for each event in the events folder", async () => {
@@ -500,6 +548,58 @@ describe("syncCalendarEvents", () => {
     await syncCalendarEvents(plugin)
 
     expect(google.fetchCalendarEventsPage).toHaveBeenCalledWith(expect.objectContaining({ syncToken: "token-1" }))
+  })
+
+  it("sends the queued deletions and clears them", async () => {
+    const { plugin } = createPlugin()
+    plugin.settings.calendarSync.pendingDeletes = [{ eventId: "event-1", calendarId: "work" }]
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(google.deleteCalendarEvent).toHaveBeenCalledWith({ accessToken: "access-token", calendarId: "work", eventId: "event-1" })
+    expect(plugin.settings.calendarSync.pendingDeletes).toEqual([])
+    expect(result.errors).toEqual([])
+  })
+
+  it("keeps a deletion that failed and reports it", async () => {
+    google.deleteCalendarEvent.mockRejectedValue(new Error("offline"))
+    const { plugin } = createPlugin()
+    plugin.settings.calendarSync.pendingDeletes = [{ eventId: "event-1", calendarId: "work" }]
+
+    const result = await syncCalendarEvents(plugin)
+
+    expect(plugin.settings.calendarSync.pendingDeletes).toHaveLength(1)
+    expect(result.errors).toEqual(["event-1: offline"])
+  })
+
+  it("remembers the notes it knows about", async () => {
+    const file: FakeFile = {
+      path: "Calendar/2026-11-02 10-00 │ Client meeting.md",
+      stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1", calendarId: "work" }) },
+    }
+    const { plugin } = createPlugin({}, [file])
+
+    await syncCalendarEvents(plugin)
+
+    expect(plugin.settings.calendarSync.notes).toEqual({
+      "Calendar/2026-11-02 10-00 │ Client meeting.md": { eventId: "event-1", calendarId: "work" },
+    })
+  })
+
+  it("marks a note trashed by the pull, so it is not treated as a user deletion", async () => {
+    const file: FakeFile = {
+      path: "Calendar/2026-11-02 10-00 │ Client meeting.md",
+      stat: { mtime: Date.parse("2026-10-01T00:00:00.000Z") },
+      frontmatter: { remindair: JSON.stringify({ eventId: "event-1", calendarId: "work" }) },
+    }
+    google.fetchCalendarEventsPage.mockResolvedValue({ events: [event({ status: "cancelled" })] })
+    const { plugin } = createPlugin({}, [file])
+
+    await syncCalendarEvents(plugin)
+
+    expect(isSyncTrash(file.path)).toBe(true)
+    expect(plugin.settings.calendarSync.pendingDeletes).toEqual([])
   })
 
   it("deletes the note when Google reports a cancelled event", async () => {

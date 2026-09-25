@@ -166,6 +166,34 @@ export const updateCalendarEvent = async ({
   return (response.json ?? {}) as GoogleCalendarEvent
 }
 
+export interface DeleteCalendarEventOptions {
+  accessToken: string
+  calendarId: string
+  eventId: string
+  sendUpdates?: "all" | "externalOnly" | "none"
+}
+
+export const deleteCalendarEvent = async ({
+  accessToken,
+  calendarId,
+  eventId,
+  sendUpdates,
+}: DeleteCalendarEventOptions): Promise<void> => {
+  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`)
+  if (sendUpdates) url.searchParams.set("sendUpdates", sendUpdates)
+
+  const response = await requestUrl({
+    url: url.toString(),
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    throw: false,
+  })
+
+  // The event is already gone, which is what the caller wanted.
+  if (response.status === 404 || response.status === 410) return
+  if (response.status >= 400) throw new Error(calendarErrorMessage(response.status, response.json))
+}
+
 export const fetchCalendarList = async (accessToken: string): Promise<GoogleCalendarListEntry[]> => {
   const url = new URL(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList`)
   url.searchParams.set("maxResults", "250")

@@ -3,17 +3,24 @@ import type ObsidianNotifierPlugin from "main"
 import { Notice } from "tests/mocks/obsidian"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 
-const events = vi.hoisted(() => ({ syncCalendarEvents: vi.fn(), fixNoteName: vi.fn() }))
+const events = vi.hoisted(() => ({
+  syncCalendarEvents: vi.fn(),
+  fixNoteName: vi.fn(),
+  queueNoteDeletion: vi.fn(),
+  isSyncTrash: vi.fn(),
+}))
 
 vi.mock("src/google/eventsSync", () => ({
   fixNoteName: events.fixNoteName,
+  isSyncTrash: events.isSyncTrash,
+  queueNoteDeletion: events.queueNoteDeletion,
   syncCalendarEvents: events.syncCalendarEvents,
 }))
 
 import {
   FORCED_SYNC_MIN_GAP_MS,
   MIN_AUTO_SYNC_SECONDS,
-  RENAME_SYNC_DELAY_MS,
+  PUSH_SYNC_DELAY_MS,
   SYNC_HEARTBEAT_ACTIVE_MS,
   SYNC_HEARTBEAT_IDLE_MS,
   SYNC_RETRY_BASE_MS,
@@ -34,7 +41,7 @@ const createPlugin = ({ autoSyncSeconds = 45, connected = true, lastSyncAt = 0 }
   const registerDomEvent = vi.fn()
   const registerEvent = vi.fn()
   const onLayoutReady = vi.fn()
-  const renameListener: { current?: (file: { path: string }) => void } = {}
+  const listeners: Record<string, (file: { path: string }) => void> = {}
 
   const plugin = {
     settings: {
@@ -48,8 +55,8 @@ const createPlugin = ({ autoSyncSeconds = 45, connected = true, lastSyncAt = 0 }
     app: {
       workspace: { onLayoutReady },
       vault: {
-        on: vi.fn((_event: string, listener: (file: { path: string }) => void) => {
-          renameListener.current = listener
+        on: vi.fn((event: string, listener: (file: { path: string }) => void) => {
+          listeners[event] = listener
 
           return {}
         }),
@@ -57,7 +64,7 @@ const createPlugin = ({ autoSyncSeconds = 45, connected = true, lastSyncAt = 0 }
     },
   } as unknown as ObsidianNotifierPlugin
 
-  return { plugin, register, registerDomEvent, registerEvent, onLayoutReady, renameListener }
+  return { plugin, register, registerDomEvent, registerEvent, onLayoutReady, listeners }
 }
 
 const emptyResult = { created: 0, updated: 0, skipped: 0, deleted: 0, errors: [] }
@@ -114,6 +121,8 @@ describe("startCalendarSync", () => {
     vi.spyOn(document, "hasFocus").mockReturnValue(true)
     Notice.instances = []
     events.fixNoteName.mockResolvedValue(true)
+    events.queueNoteDeletion.mockResolvedValue(true)
+    events.isSyncTrash.mockReturnValue(false)
     events.syncCalendarEvents.mockImplementation(async (plugin: ObsidianNotifierPlugin) => {
       plugin.settings.calendarSync.lastSyncAt = Date.now()
 
@@ -139,41 +148,74 @@ describe("startCalendarSync", () => {
   })
 
   it("puts the name back as soon as a note is renamed", () => {
-    const { plugin, renameListener } = createPlugin()
+    const { plugin, listeners } = createPlugin()
 
     startCalendarSync(plugin)
-    renameListener.current?.({ path: "Calendar/2026-12-24 10-00 · Client meeting.md" })
+    listeners.rename?.({ path: "Calendar/2026-12-24 10-00 │ Client meeting.md" })
 
-    expect(events.fixNoteName).toHaveBeenCalledWith(plugin, { path: "Calendar/2026-12-24 10-00 · Client meeting.md" })
+    expect(events.fixNoteName).toHaveBeenCalledWith(plugin, { path: "Calendar/2026-12-24 10-00 │ Client meeting.md" })
   })
 
   it("pushes the new title once the rename settles", async () => {
-    const { plugin, renameListener } = createPlugin()
+    const { plugin, listeners } = createPlugin()
 
     startCalendarSync(plugin)
-    renameListener.current?.({ path: "Calendar/2026-11-02 10-00 · Sprint review.md" })
-    await vi.advanceTimersByTimeAsync(RENAME_SYNC_DELAY_MS)
+    listeners.rename?.({ path: "Calendar/2026-11-02 10-00 │ Sprint review.md" })
+    await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS)
 
     expect(events.syncCalendarEvents).toHaveBeenCalledTimes(1)
   })
 
   it("collapses a burst of renames into one push", async () => {
-    const { plugin, renameListener } = createPlugin()
+    const { plugin, listeners } = createPlugin()
 
     startCalendarSync(plugin)
-    renameListener.current?.({ path: "Calendar/a.md" })
-    await vi.advanceTimersByTimeAsync(RENAME_SYNC_DELAY_MS / 2)
-    renameListener.current?.({ path: "Calendar/b.md" })
-    await vi.advanceTimersByTimeAsync(RENAME_SYNC_DELAY_MS)
+    listeners.rename?.({ path: "Calendar/a.md" })
+    await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS / 2)
+    listeners.rename?.({ path: "Calendar/b.md" })
+    await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS)
 
     expect(events.syncCalendarEvents).toHaveBeenCalledTimes(1)
   })
 
-  it("ignores a renamed file that is not a note", () => {
-    const { plugin, renameListener } = createPlugin()
+  it("queues the event and pushes when a note is deleted", async () => {
+    const { plugin, listeners } = createPlugin()
 
     startCalendarSync(plugin)
-    renameListener.current?.({ path: "Calendar/photo.png" })
+    listeners.delete?.({ path: "Calendar/2026-11-02 10-00 │ Client meeting.md" })
+    await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS)
+
+    expect(events.queueNoteDeletion).toHaveBeenCalledWith(plugin, "Calendar/2026-11-02 10-00 │ Client meeting.md")
+    expect(events.syncCalendarEvents).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores a note that the sync itself trashed", async () => {
+    events.isSyncTrash.mockReturnValue(true)
+    const { plugin, listeners } = createPlugin()
+
+    startCalendarSync(plugin)
+    listeners.delete?.({ path: "Calendar/2026-11-02 10-00 │ Client meeting.md" })
+    await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS)
+
+    expect(events.queueNoteDeletion).not.toHaveBeenCalled()
+    expect(events.syncCalendarEvents).not.toHaveBeenCalled()
+  })
+
+  it("ignores a deleted file that is not a note", async () => {
+    const { plugin, listeners } = createPlugin()
+
+    startCalendarSync(plugin)
+    listeners.delete?.({ path: "Calendar/photo.png" })
+    await vi.advanceTimersByTimeAsync(PUSH_SYNC_DELAY_MS)
+
+    expect(events.queueNoteDeletion).not.toHaveBeenCalled()
+  })
+
+  it("ignores a renamed file that is not a note", () => {
+    const { plugin, listeners } = createPlugin()
+
+    startCalendarSync(plugin)
+    listeners.rename?.({ path: "Calendar/photo.png" })
 
     expect(events.fixNoteName).not.toHaveBeenCalled()
   })
@@ -283,14 +325,14 @@ describe("startCalendarSync", () => {
   })
 
   it("pushes a rename even when a focus sync just ran", async () => {
-    const { plugin, registerDomEvent, renameListener } = createPlugin()
+    const { plugin, registerDomEvent, listeners } = createPlugin()
 
     startCalendarSync(plugin)
     const focus = registerDomEvent.mock.calls[0][2] as () => void
     focus()
     await vi.advanceTimersByTimeAsync(0)
-    renameListener.current?.({ path: "Calendar/2026-11-02 10-00 · Sprint review.md" })
-    await vi.advanceTimersByTimeAsync(FORCED_SYNC_MIN_GAP_MS + RENAME_SYNC_DELAY_MS)
+    listeners.rename?.({ path: "Calendar/2026-11-02 10-00 │ Sprint review.md" })
+    await vi.advanceTimersByTimeAsync(FORCED_SYNC_MIN_GAP_MS + PUSH_SYNC_DELAY_MS)
 
     expect(events.syncCalendarEvents).toHaveBeenCalledTimes(2)
   })
