@@ -63,6 +63,28 @@ const renameToStart = async (plugin: ObsidianNotifierPlugin, file: TFile, start:
   if (target !== file.path) await plugin.app.fileManager.renameFile(file, target)
 }
 
+/**
+ * Creates an event note. With a selection the note takes its title and is linked in place,
+ * without one the note is created empty and opened so the title can be typed.
+ */
+export const createEvent = async (plugin: ObsidianNotifierPlugin): Promise<boolean> => {
+  if (await createEventFromSelection(plugin)) return true
+
+  const { start, end } = eventDefaults(new Date())
+  const folder = eventsFolder(plugin)
+  const vault = plugin.app.vault
+
+  await ensureFolder(vault, folder)
+
+  const path = uniqueNotePath(vault, folder, noteBaseName(start, ""))
+  const file = await vault.create(path, noteContent(start, end))
+
+  await plugin.app.workspace.getLeaf(false).openFile(file)
+  new Notice(`${PLUGIN_NAME}: event note created. Rename it to set the title.`)
+
+  return true
+}
+
 export const fillEventFrontmatter = async (plugin: ObsidianNotifierPlugin): Promise<void> => {
   if (await createEventFromSelection(plugin)) return
 

@@ -4,6 +4,7 @@ import { Notice } from "tests/mocks/obsidian"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import {
   buildEventLink,
+  createEvent,
   createEventFromSelection,
   eventDefaults,
   fillEventFrontmatter,
@@ -59,16 +60,18 @@ const createPlugin = (options: PluginOptions = {}) => {
     replaceSelection: vi.fn(),
   }
 
+  const openFile = vi.fn(async () => undefined)
+
   const plugin = {
     settings: { googleCalendar: { ...DEFAULT_GCAL_SETTINGS, eventsFolder: options.folder ?? "Calendar" } },
     app: {
-      workspace: { getActiveFile: () => file, getActiveViewOfType: () => ({ editor }) },
+      workspace: { getActiveFile: () => file, getActiveViewOfType: () => ({ editor }), getLeaf: () => ({ openFile }) },
       fileManager: { processFrontMatter, renameFile },
       vault,
     },
   } as unknown as ObsidianNotifierPlugin
 
-  return { plugin, file, frontmatter, processFrontMatter, created, folders, editor, renamed }
+  return { plugin, file, frontmatter, processFrontMatter, created, folders, editor, renamed, openFile }
 }
 
 describe("formatLocalDateTime", () => {
@@ -156,6 +159,50 @@ describe("createEventFromSelection", () => {
 
     expect(created).toHaveLength(0)
     expect(editor.replaceSelection).not.toHaveBeenCalled()
+  })
+})
+
+describe("createEvent", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
+    Notice.instances = []
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("uses the selection as the title and links it in place", async () => {
+    const { plugin, created, editor, openFile } = createPlugin({ selection: "Meeting with Bart" })
+
+    await expect(createEvent(plugin)).resolves.toBe(true)
+
+    expect(created[0].path).toBe("Calendar/2026-10-28 10-22 │ Meeting with Bart.md")
+    expect(editor.replaceSelection).toHaveBeenCalledWith("[[Calendar/2026-10-28 10-22 │ Meeting with Bart|Meeting with Bart]]")
+    expect(openFile).not.toHaveBeenCalled()
+  })
+
+  it("creates an untitled event and opens it when nothing is selected", async () => {
+    const { plugin, created, editor, openFile } = createPlugin()
+
+    await expect(createEvent(plugin)).resolves.toBe(true)
+
+    expect(created[0]).toEqual({
+      path: "Calendar/2026-10-28 10-22 │ Untitled event.md",
+      content: '---\nstart: "2026-10-28T10:22:00"\nend: "2026-10-28T11:22:00"\n---\n',
+    })
+    expect(editor.replaceSelection).not.toHaveBeenCalled()
+    expect(openFile).toHaveBeenCalledTimes(1)
+    expect(Notice.instances.at(-1)?.message).toContain("Rename it to set the title")
+  })
+
+  it("creates the event even when no note is open", async () => {
+    const { plugin, created } = createPlugin({ file: null })
+
+    await expect(createEvent(plugin)).resolves.toBe(true)
+
+    expect(created).toHaveLength(1)
   })
 })
 

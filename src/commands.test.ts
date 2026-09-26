@@ -139,10 +139,11 @@ describe("registerCommands", () => {
 
     registerCommands(plugin)
 
-    expect(addCommand).toHaveBeenCalledTimes(3)
+    expect(addCommand).toHaveBeenCalledTimes(4)
     expect(addCommand.mock.calls.map(([command]) => command.id)).toEqual([
       `${PLUGIN_NAME}_set-reminder`,
       `${PLUGIN_NAME}_edit-reminder-at-cursor`,
+      `${PLUGIN_NAME}_create-event`,
       `${PLUGIN_NAME}_create-event-properties`,
     ])
   })
@@ -155,6 +156,7 @@ describe("registerCommands", () => {
     expect(addCommand.mock.calls.map(([command]) => command.name)).toEqual([
       "🔔 Remind me! - set reminder for this line",
       "🔔 Edit reminder! - edit reminder in this line",
+      "Create event",
       "Create calendar event - from the selection or this note",
     ])
   })
