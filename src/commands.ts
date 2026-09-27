@@ -47,7 +47,7 @@ const editReminderInLine = (plugin: ObsidianNotifierPlugin) => {
 const createEventFromNote = (plugin: ObsidianNotifierPlugin) => {
   plugin.addCommand({
     id: `${PLUGIN_NAME}_create-event-properties`,
-    name: "Create calendar event - from the selection or this note",
+    name: "Create event - fill this note's properties",
     callback: () => {
       void fillEventFrontmatter(plugin)
     },

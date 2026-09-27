@@ -34,6 +34,8 @@ export interface FetchCalendarEventsOptions {
 
 export interface FetchCalendarEventsPageOptions extends FetchCalendarEventsOptions {
   syncToken?: string
+  /** Expands recurring events into single instances. Off by default so the sync keeps the series. */
+  singleEvents?: boolean
 }
 
 export interface CalendarEventsPage {
@@ -91,6 +93,7 @@ export const fetchCalendarEventsPage = async ({
   timeMax,
   maxResults = DEFAULT_MAX_RESULTS,
   syncToken,
+  singleEvents = false,
 }: FetchCalendarEventsPageOptions): Promise<CalendarEventsPage> => {
   const events: GoogleCalendarEvent[] = []
   let pageToken: string | undefined
@@ -98,7 +101,7 @@ export const fetchCalendarEventsPage = async ({
 
   do {
     const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${encodeURIComponent(calendarId)}/events`)
-    url.searchParams.set("singleEvents", "false")
+    url.searchParams.set("singleEvents", String(singleEvents))
     url.searchParams.set("maxResults", String(maxResults))
 
     if (syncToken) {

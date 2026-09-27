@@ -2,14 +2,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type ObsidianNotifierPlugin from "main"
 import { Notice } from "tests/mocks/obsidian"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
-import {
-  buildEventLink,
-  createEvent,
-  createEventFromSelection,
-  eventDefaults,
-  fillEventFrontmatter,
-  formatLocalDateTime,
-} from "src/google/eventFrontmatter"
+import { formatLocalDateTime } from "src/utils/dates"
+import { buildEventLink, createEvent, eventDefaults, fillEventFrontmatter } from "src/google/eventFrontmatter"
+
+const picker = vi.hoisted(() => {
+  class EventDatePickerModalMock {
+    static instances: EventDatePickerModalMock[] = []
+
+    open = vi.fn()
+
+    constructor(
+      public plugin: unknown,
+      public options: { title?: string | null; onSubmit: (result: unknown, action: string) => unknown },
+    ) {
+      EventDatePickerModalMock.instances.push(this)
+    }
+  }
+
+  return { EventDatePickerModalMock }
+})
+
+vi.mock("src/components/eventDatePicker/eventDatePickerModal", () => ({ EventDatePickerModal: picker.EventDatePickerModalMock }))
+
+const { EventDatePickerModalMock } = picker
 
 interface FakeFile {
   path: string
@@ -57,7 +72,9 @@ const createPlugin = (options: PluginOptions = {}) => {
 
   const editor = {
     getSelection: vi.fn(() => options.selection ?? ""),
+    getCursor: vi.fn((which?: string) => (which === "to" ? { line: 2, ch: 4 } : { line: 2, ch: 0 })),
     replaceSelection: vi.fn(),
+    replaceRange: vi.fn(),
   }
 
   const openFile = vi.fn(async () => undefined)
@@ -106,103 +123,105 @@ describe("buildEventLink", () => {
   })
 })
 
-describe("createEventFromSelection", () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
-    Notice.instances = []
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it("creates an event note from the selection and links it in place", async () => {
-    const { plugin, created, editor, folders } = createPlugin({ selection: "  Meeting with Bart  " })
-
-    await expect(createEventFromSelection(plugin)).resolves.toBe(true)
-
-    expect(folders).toEqual(["Calendar"])
-    expect(created).toEqual([
-      {
-        path: "Calendar/2026-10-28 10-22 │ Meeting with Bart.md",
-        content: '---\nstart: "2026-10-28T10:22:00"\nend: "2026-10-28T11:22:00"\n---\n',
-      },
-    ])
-    expect(editor.replaceSelection).toHaveBeenCalledWith("[[Calendar/2026-10-28 10-22 │ Meeting with Bart|Meeting with Bart]]")
-    expect(Notice.instances.at(-1)?.message).toContain("pushed to Google on the next sync")
-  })
-
-  it("collapses the whitespace of a multi line selection", async () => {
-    const { plugin, created } = createPlugin({ selection: "Meeting\nwith\nBart" })
-
-    await createEventFromSelection(plugin)
-
-    expect(created[0].path).toBe("Calendar/2026-10-28 10-22 │ Meeting with Bart.md")
-  })
-
-  it("picks a free file name", async () => {
-    const { plugin, created } = createPlugin({
-      selection: "Meeting",
-      existingPaths: ["Calendar/2026-10-28 10-22 │ Meeting.md"],
-    })
-
-    await createEventFromSelection(plugin)
-
-    expect(created[0].path).toBe("Calendar/2026-10-28 10-22 │ Meeting 2.md")
-  })
-
-  it("returns false without a selection", async () => {
-    const { plugin, created, editor } = createPlugin({ selection: "   " })
-
-    await expect(createEventFromSelection(plugin)).resolves.toBe(false)
-
-    expect(created).toHaveLength(0)
-    expect(editor.replaceSelection).not.toHaveBeenCalled()
-  })
-})
-
 describe("createEvent", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
     Notice.instances = []
+    EventDatePickerModalMock.instances = []
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it("uses the selection as the title and links it in place", async () => {
+  const lastPicker = () => {
+    const instance = EventDatePickerModalMock.instances.at(-1)
+    if (!instance) throw new Error("the picker was not opened")
+
+    return instance
+  }
+
+  const submit = (title: string, action = "confirm") =>
+    lastPicker().options.onSubmit({ title, start: "2026-11-02T10:00:00", end: "2026-11-02T10:15:00" }, action)
+
+  it("opens the picker with the selection as the title", async () => {
+    const { plugin } = createPlugin({ selection: "  Meeting with Bart  " })
+
+    await expect(createEvent(plugin)).resolves.toBe(true)
+
+    expect(lastPicker().options.title).toBe("Meeting with Bart")
+    expect(lastPicker().open).toHaveBeenCalledTimes(1)
+  })
+
+  it("opens the picker without a title when nothing is selected", async () => {
+    const { plugin } = createPlugin({ selection: "   " })
+
+    await createEvent(plugin)
+
+    expect(lastPicker().options.title).toBeNull()
+  })
+
+  it("creates the note on submit and links it over the selection", async () => {
     const { plugin, created, editor, openFile } = createPlugin({ selection: "Meeting with Bart" })
 
-    await expect(createEvent(plugin)).resolves.toBe(true)
+    await createEvent(plugin)
+    await submit("Meeting with Bart")
 
-    expect(created[0].path).toBe("Calendar/2026-10-28 10-22 │ Meeting with Bart.md")
-    expect(editor.replaceSelection).toHaveBeenCalledWith("[[Calendar/2026-10-28 10-22 │ Meeting with Bart|Meeting with Bart]]")
+    expect(created).toEqual([
+      {
+        path: "Calendar/2026-11-02 10-00 │ Meeting with Bart.md",
+        content: '---\nstart: "2026-11-02T10:00:00"\nend: "2026-11-02T10:15:00"\n---\n',
+      },
+    ])
+    expect(editor.replaceRange).toHaveBeenCalledWith(
+      "[[Calendar/2026-11-02 10-00 │ Meeting with Bart|Meeting with Bart]]",
+      { line: 2, ch: 0 },
+      { line: 2, ch: 4 },
+    )
     expect(openFile).not.toHaveBeenCalled()
+    expect(Notice.instances.at(-1)?.message).toContain("pushed to Google on the next sync")
   })
 
-  it("creates an untitled event and opens it when nothing is selected", async () => {
-    const { plugin, created, editor, openFile } = createPlugin()
+  it("opens the new note when there is no selection to link", async () => {
+    const { plugin, created, editor, openFile } = createPlugin({ selection: "" })
 
-    await expect(createEvent(plugin)).resolves.toBe(true)
+    await createEvent(plugin)
+    await submit("Dentist")
 
-    expect(created[0]).toEqual({
-      path: "Calendar/2026-10-28 10-22 │ Untitled event.md",
-      content: '---\nstart: "2026-10-28T10:22:00"\nend: "2026-10-28T11:22:00"\n---\n',
-    })
-    expect(editor.replaceSelection).not.toHaveBeenCalled()
+    expect(created[0].path).toBe("Calendar/2026-11-02 10-00 │ Dentist.md")
+    expect(editor.replaceRange).not.toHaveBeenCalled()
     expect(openFile).toHaveBeenCalledTimes(1)
-    expect(Notice.instances.at(-1)?.message).toContain("Rename it to set the title")
   })
 
-  it("creates the event even when no note is open", async () => {
-    const { plugin, created } = createPlugin({ file: null })
+  it("copies the link when the picker asks for it", async () => {
+    const writeText = vi.fn(async () => {})
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    const { plugin } = createPlugin({ selection: "" })
 
-    await expect(createEvent(plugin)).resolves.toBe(true)
+    await createEvent(plugin)
+    await submit("Dentist", "copy-link")
+
+    expect(writeText).toHaveBeenCalledWith("[[Calendar/2026-11-02 10-00 │ Dentist|Dentist]]")
+    expect(Notice.instances.at(-1)?.message).toContain("copied")
+  })
+
+  it("still creates the note when the clipboard is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: vi.fn(async () => {
+          throw new Error("no clipboard")
+        }),
+      },
+      configurable: true,
+    })
+    const { plugin, created } = createPlugin({ selection: "" })
+
+    await createEvent(plugin)
+    await submit("Dentist", "copy-link")
 
     expect(created).toHaveLength(1)
+    expect(Notice.instances.at(-1)?.message).toContain("could not be copied")
   })
 })
 
@@ -211,19 +230,22 @@ describe("fillEventFrontmatter", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
     Notice.instances = []
+    EventDatePickerModalMock.instances = []
   })
 
   afterEach(() => {
     vi.useRealTimers()
   })
 
-  it("uses the selection when there is one", async () => {
+  it("opens the picker instead of touching the note when there is a selection", async () => {
     const { plugin, created, processFrontMatter } = createPlugin({ selection: "Meeting with Bart" })
 
     await fillEventFrontmatter(plugin)
 
-    expect(created).toHaveLength(1)
+    expect(created).toHaveLength(0)
     expect(processFrontMatter).not.toHaveBeenCalled()
+    expect(EventDatePickerModalMock.instances).toHaveLength(1)
+    expect(EventDatePickerModalMock.instances[0].options.title).toBe("Meeting with Bart")
   })
 
   it("fills the title from the file name and the default times", async () => {

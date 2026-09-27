@@ -157,7 +157,7 @@ describe("registerCommands", () => {
       "🔔 Remind me! - set reminder for this line",
       "🔔 Edit reminder! - edit reminder in this line",
       "Create event",
-      "Create calendar event - from the selection or this note",
+      "Create event - fill this note's properties",
     ])
   })
 

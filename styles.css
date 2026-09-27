@@ -197,3 +197,323 @@
   background: var(--background-secondary);
   font-size: 0.85em;
 }
+
+/* Event date picker */
+.RemindAir-event-picker-modal {
+  width: min(760px, 94vw);
+}
+
+/* The month view has seven small cells, so it does not need the width of the day grid. */
+.RemindAir-event-picker-modal:has(.RemindAir-event-picker.is-month) {
+  width: min(420px, 94vw);
+}
+
+.RemindAir-event-picker-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.RemindAir-event-picker {
+  --remindair-hour-height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.RemindAir-event-picker [hidden] {
+  display: none !important;
+}
+
+.RemindAir-event-picker__title-field input {
+  width: 100%;
+  font-size: 1.1em;
+}
+
+.RemindAir-event-picker__hint {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.RemindAir-event-picker__month-header,
+.RemindAir-event-picker__days-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.RemindAir-event-picker__nav {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+}
+
+.RemindAir-event-picker.is-month .RemindAir-event-picker__month-header {
+  max-width: 372px;
+  margin: 0 auto;
+}
+
+.RemindAir-event-picker__month-label,
+.RemindAir-event-picker__days-label {
+  flex: 1;
+  text-align: center;
+  font-weight: 600;
+}
+
+.RemindAir-event-picker__month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  width: 100%;
+  max-width: 372px;
+  margin: 0 auto;
+}
+
+.RemindAir-event-picker__weekday {
+  text-align: center;
+  font-size: 0.7em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  padding-bottom: 2px;
+}
+
+.RemindAir-event-picker__day {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  height: auto;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 0.85em;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.RemindAir-event-picker__day:hover {
+  background: var(--background-modifier-hover);
+}
+
+.RemindAir-event-picker__day:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+.RemindAir-event-picker__day.is-outside {
+  opacity: 0.28;
+}
+
+.RemindAir-event-picker__day.is-weekend:not(.is-selected):not(.is-today) {
+  color: var(--text-muted);
+}
+
+.RemindAir-event-picker__day.is-today {
+  outline: 1px solid var(--interactive-accent);
+}
+
+.RemindAir-event-picker__day.is-selected {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.RemindAir-event-picker__days-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.RemindAir-event-picker__columns-head {
+  display: flex;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-bottom: 4px;
+  background: var(--background-primary);
+}
+
+.RemindAir-event-picker__columns-body {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.RemindAir-event-picker__gutter-head {
+  width: 52px;
+  flex: 0 0 52px;
+}
+
+.RemindAir-event-picker__day-head {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  border-radius: 6px;
+}
+
+.RemindAir-event-picker__day-head.is-today {
+  background: var(--background-modifier-hover);
+}
+
+.RemindAir-event-picker__day-head-weekday {
+  font-size: 0.75em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.RemindAir-event-picker__day-head-number {
+  font-weight: 600;
+}
+
+.RemindAir-event-picker__scroll {
+  max-height: 55vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.RemindAir-event-picker__gutter {
+  width: 52px;
+  flex: 0 0 52px;
+  /* The grid swallows touch so a drag can set the range, so the gutter is the place to scroll. */
+  touch-action: pan-y;
+}
+
+.RemindAir-event-picker__hour {
+  height: var(--remindair-hour-height);
+  font-size: 0.7em;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 6px;
+}
+
+.RemindAir-event-picker__columns {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  touch-action: none;
+  user-select: none;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--background-modifier-border) 0,
+    var(--background-modifier-border) 1px,
+    transparent 1px,
+    transparent var(--remindair-hour-height)
+  );
+}
+
+.RemindAir-event-picker__column {
+  position: relative;
+  flex: 1;
+  border-left: 1px solid var(--background-modifier-border);
+  cursor: crosshair;
+}
+
+.RemindAir-event-picker__dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 5px;
+  display: flex;
+  gap: 2px;
+  justify-content: center;
+  height: 4px;
+  pointer-events: none;
+}
+
+.RemindAir-event-picker__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+}
+
+.RemindAir-event-picker__event {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 4px;
+  border-left: 2px solid var(--interactive-accent);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 0.7em;
+  line-height: 1.15;
+  padding: 1px 3px;
+  pointer-events: none;
+}
+
+.RemindAir-event-picker__event-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.RemindAir-event-picker__all-day {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+  background: var(--background-modifier-hover);
+  font-size: 0.65em;
+  padding: 0 3px;
+  margin-top: 2px;
+}
+
+.RemindAir-event-picker__now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  margin-top: -1px;
+  z-index: 2;
+  background: var(--color-red, #e5484d);
+  pointer-events: none;
+}
+
+.RemindAir-event-picker__now-dot {
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-red, #e5484d);
+}
+
+.RemindAir-event-picker__selection {
+  position: absolute;
+  z-index: 3;
+  left: 2px;
+  right: 2px;
+  border-radius: 4px;
+  background: var(--interactive-accent);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.RemindAir-event-picker__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.RemindAir-event-picker__summary {
+  text-align: center;
+  font-size: 0.95em;
+  color: var(--text-normal);
+}
+
+.RemindAir-event-picker__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}

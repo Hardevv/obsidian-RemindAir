@@ -21,3 +21,9 @@ export const toLocalDateTimeValue = (date: Date): string => {
   const min = pad(date.getMinutes())
   return `${y}-${m}-${d}T${h}:${min}`
 }
+
+/** Local date time with seconds, the shape the event frontmatter uses. */
+export const formatLocalDateTime = (date: Date): string => {
+  const seconds = String(date.getSeconds()).padStart(2, "0")
+  return `${toLocalDateTimeValue(date)}:${seconds}`
+}
