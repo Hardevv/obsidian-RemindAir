@@ -3,6 +3,9 @@ export const HOUR_HEIGHT = 60
 export const HOURS_IN_DAY = 24
 export const MINUTES_IN_DAY = HOURS_IN_DAY * 60
 
+/** Blocks shorter than this only have room for a single line of text. */
+export const COMPACT_EVENT_MINUTES = 30
+
 const pad = (value: number): string => String(value).padStart(2, "0")
 
 export const startOfDay = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -109,6 +112,14 @@ export const monthLabel = (date: Date): string => date.toLocaleDateString(undefi
 
 export const rangeLabel = (from: Date, to: Date, time24: boolean): string => {
   const start = `${weekdayLabel(from)} ${from.getDate()} ${formatTime(from, time24)}`
+  const end = isSameDay(from, to) ? formatTime(to, time24) : `${weekdayLabel(to)} ${to.getDate()} ${formatTime(to, time24)}`
+
+  return `${start} → ${end}`
+}
+
+/** Compact range for a block, without repeating the day when it is the same one. */
+export const timeRangeLabel = (from: Date, to: Date, time24: boolean): string => {
+  const start = formatTime(from, time24)
   const end = isSameDay(from, to) ? formatTime(to, time24) : `${weekdayLabel(to)} ${to.getDate()} ${formatTime(to, time24)}`
 
   return `${start} → ${end}`

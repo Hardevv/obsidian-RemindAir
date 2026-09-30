@@ -3,6 +3,7 @@ import { Modal, setIcon } from "obsidian"
 import { formatLocalDateTime } from "src/utils/dates"
 import { PLUGIN_NAME } from "src/utils/constants"
 import {
+  COMPACT_EVENT_MINUTES,
   HOURS_IN_DAY,
   HOUR_HEIGHT,
   MINUTES_IN_DAY,
@@ -15,9 +16,9 @@ import {
   dayKey,
   dayOverlap,
   daysHeaderLabel,
-  durationLabel,
   durationMinutes,
   formatHourLabel,
+  formatTime,
   isSameDay,
   layoutRanges,
   minutesAtPointer,
@@ -27,12 +28,12 @@ import {
   moveToDay,
   parseDayKey,
   rangeKey,
-  rangeLabel,
   scrollOffsetFor,
   sameDayInMonth,
   snapDown,
   snapUp,
   startOfDay,
+  timeRangeLabel,
   weekdayLabel,
 } from "./grid"
 import { mergeEvents, type PickerEvent, type PickerEventSource, type PickerRange } from "./eventSources"
@@ -54,7 +55,8 @@ export interface EventDatePickerOptions {
   onSubmit: (result: EventDatePickerResult, action: EventDatePickerAction) => unknown
 }
 
-const DEFAULT_DURATION_MINUTES = 15
+const DEFAULT_DURATION_MINUTES = 30
+const START_LEAD_MINUTES = 15
 const NARROW_DAY_COUNT = 3
 const WIDE_DAY_COUNT = 7
 const NARROW_WIDTH = 700
@@ -87,7 +89,6 @@ export class EventDatePickerModal extends Modal {
   private daysEl!: HTMLElement
   private footerEl!: HTMLElement
   private hintEl!: HTMLElement
-  private summaryEl!: HTMLElement
   private scrollEl!: HTMLElement
   private nowEl: HTMLElement | null = null
   private scrollTop = 0
@@ -106,7 +107,12 @@ export class EventDatePickerModal extends Modal {
     this.title = options.title ?? ""
 
     const initial = options.initialStart ?? new Date()
-    this.from = atMinutes(startOfDay(initial), snapUp(minutesFromMidnight(initial)))
+    // Default to a half hour slot that starts in a quarter of an hour.
+    const startMinutes = Math.min(
+      snapUp(minutesFromMidnight(initial)) + START_LEAD_MINUTES,
+      MINUTES_IN_DAY - DEFAULT_DURATION_MINUTES,
+    )
+    this.from = atMinutes(startOfDay(initial), startMinutes)
     this.to = addMinutes(this.from, DEFAULT_DURATION_MINUTES)
     this.anchorDate = startOfDay(initial)
     this.focusedDay = this.anchorDate
@@ -171,6 +177,14 @@ export class EventDatePickerModal extends Modal {
     this.renderFooter()
     this.syncVisibility()
     this.loadEvents()
+
+    // One listener for the whole modal, so a mode change cannot leave two of them behind.
+    const onKeydown = (event: KeyboardEvent) => {
+      if (this.mode === "month") this.onMonthKeydown(event)
+      else this.onDaysKeydown(event)
+    }
+    document.addEventListener("keydown", onKeydown)
+    this.cleanups.push(() => document.removeEventListener("keydown", onKeydown))
   }
 
   private renderTitle(root: HTMLElement): void {
@@ -185,6 +199,7 @@ export class EventDatePickerModal extends Modal {
     input.addEventListener("input", () => {
       this.title = input.value
       this.syncVisibility()
+      if (this.mode === "days") this.renderOverlays()
     })
     input.addEventListener("keydown", (event: KeyboardEvent) => {
       if (event.key === "ArrowDown" && this.calendarVisible) {
@@ -196,7 +211,10 @@ export class EventDatePickerModal extends Modal {
 
       if (event.key !== "Enter") return
       event.preventDefault()
-      if (this.calendarVisible) this.submit("confirm")
+      if (!this.calendarVisible) return
+
+      if (this.mode === "month") this.openDay(this.focusedDay)
+      else this.submit("confirm")
     })
 
     this.titleInput = input
@@ -215,9 +233,10 @@ export class EventDatePickerModal extends Modal {
     this.monthEl.empty()
 
     const header = this.monthEl.createDiv({ cls: cls("month-header") })
-    this.iconButton(header, "chevron-left", "Previous month", () => this.shiftMonth(-1))
-    header.createSpan({ cls: cls("month-label"), text: monthLabel(this.monthAnchor) })
-    this.iconButton(header, "chevron-right", "Next month", () => this.shiftMonth(1))
+    const nav = header.createDiv({ cls: cls("month-nav") })
+    this.iconButton(nav, "chevron-left", "Previous month", () => this.shiftMonth(-1))
+    nav.createSpan({ cls: cls("month-label"), text: monthLabel(this.monthAnchor) })
+    this.iconButton(nav, "chevron-right", "Next month", () => this.shiftMonth(1))
 
     const grid = this.monthEl.createDiv({ cls: cls("month-grid") })
     const cells = monthCells(this.monthAnchor, this.weekStartsOn)
@@ -252,10 +271,16 @@ export class EventDatePickerModal extends Modal {
       if (fallback) fallback.tabIndex = 0
     }
 
-    // The document catches the keys even after a click lands on something that cannot hold focus.
-    const onKeydown = (event: KeyboardEvent) => this.onMonthKeydown(event)
-    document.addEventListener("keydown", onKeydown)
-    this.cleanups.push(() => document.removeEventListener("keydown", onKeydown))
+  }
+
+  private onDaysKeydown(event: KeyboardEvent): void {
+    if (this.closed || !this.modalEl.isConnected) return
+    if (this.mode !== "days" || !this.calendarVisible) return
+    if (event.key !== "Enter") return
+    if (event.target instanceof HTMLElement && event.target.closest("input, textarea, button, a")) return
+
+    event.preventDefault()
+    this.submit("confirm")
   }
 
   private onMonthKeydown(event: KeyboardEvent): void {
@@ -294,6 +319,13 @@ export class EventDatePickerModal extends Modal {
       case "PageDown":
         next = sameDayInMonth(current, current.getFullYear(), current.getMonth() + 1)
         break
+      case "Enter":
+        // A focused day button handles Enter on its own, this covers the rest of the view.
+        if (event.target instanceof HTMLElement && event.target.closest("button")) return
+        event.preventDefault()
+        this.openDay(current)
+
+        return
       default:
         return
     }
@@ -331,16 +363,20 @@ export class EventDatePickerModal extends Modal {
     const days = dayColumns(this.anchorDate, this.dayCount, this.weekStartsOn)
     const header = this.daysEl.createDiv({ cls: cls("days-header") })
 
-    const back = header.createEl("button", { cls: cls("back"), text: "Month" })
+    const left = header.createDiv({ cls: `${cls("days-side")} is-left` })
+    const back = left.createEl("button", { cls: cls("back"), text: "Month" })
     back.addEventListener("click", () => {
       this.mode = "month"
       this.render()
       this.syncMonthFocus()
     })
 
-    this.iconButton(header, "chevron-left", "Previous days", () => this.shiftDays(-this.dayCount))
-    header.createSpan({ cls: cls("days-label"), text: daysHeaderLabel(days) })
-    this.iconButton(header, "chevron-right", "Next days", () => this.shiftDays(this.dayCount))
+    const nav = header.createDiv({ cls: cls("days-nav") })
+    this.iconButton(nav, "chevron-left", "Previous days", () => this.shiftDays(-this.dayCount))
+    nav.createSpan({ cls: cls("days-label"), text: daysHeaderLabel(days) })
+    this.iconButton(nav, "chevron-right", "Next days", () => this.shiftDays(this.dayCount))
+
+    header.createDiv({ cls: `${cls("days-side")} is-right` })
 
     this.scrollEl = this.daysEl.createDiv({ cls: cls("scroll") })
 
@@ -354,18 +390,29 @@ export class EventDatePickerModal extends Modal {
 
     // The header lives inside the scroller so the scrollbar cannot shift it against the columns.
     const head = inner.createDiv({ cls: cls("columns-head") })
-    head.createDiv({ cls: cls("gutter-head") })
+    const headRow = head.createDiv({ cls: cls("columns-head-row") })
+    headRow.createDiv({ cls: cls("gutter-head") })
 
     const today = new Date()
+    const allDay = days.map((day) => this.eventsOn(day).filter((event) => event.allDay))
+
     for (const day of days) {
-      const cell = head.createDiv({ cls: cls("day-head") })
+      const cell = headRow.createDiv({ cls: cls("day-head") })
       cell.createSpan({ cls: cls("day-head-weekday"), text: weekdayLabel(day) })
       cell.createSpan({ cls: cls("day-head-number"), text: String(day.getDate()) })
       if (isSameDay(day, today)) cell.addClass("is-today")
+    }
 
-      for (const event of this.eventsOn(day)) {
-        if (!event.allDay) continue
-        cell.createDiv({ cls: cls("all-day"), text: event.title, attr: { title: event.title } })
+    // All day events get their own band, so they never look like a timed block.
+    if (allDay.some((events) => events.length > 0)) {
+      const row = head.createDiv({ cls: `${cls("columns-head-row")} is-allday` })
+      row.createDiv({ cls: cls("gutter-head"), text: "all day" })
+
+      for (const events of allDay) {
+        const cell = row.createDiv({ cls: cls("allday-cell") })
+        for (const event of events) {
+          cell.createDiv({ cls: cls("all-day"), text: event.title, attr: { title: event.title } })
+        }
       }
     }
 
@@ -399,13 +446,18 @@ export class EventDatePickerModal extends Modal {
   private renderFooter(): void {
     this.footerEl.empty()
 
-    this.summaryEl = this.footerEl.createDiv({ cls: cls("summary") })
-    this.renderSummary()
-
     const actions = this.footerEl.createDiv({ cls: cls("actions") })
 
     const cancel = actions.createEl("button", { cls: cls("cancel"), text: "Cancel" })
     cancel.addEventListener("click", () => this.close())
+
+    // The month view only picks the day, so it cannot confirm an event yet.
+    if (this.mode === "month") {
+      const next = actions.createEl("button", { cls: `${cls("next")} mod-cta`, text: "Next" })
+      next.addEventListener("click", () => this.openDay(this.anchorDate))
+
+      return
+    }
 
     if (this.titleMode) {
       const copy = actions.createEl("button", { cls: `${cls("submit")} mod-secondary`, text: "Confirm & copy link" })
@@ -414,13 +466,6 @@ export class EventDatePickerModal extends Modal {
 
     const confirm = actions.createEl("button", { cls: `${cls("submit")} mod-cta`, text: "Confirm" })
     confirm.addEventListener("click", () => this.submit("confirm"))
-  }
-
-  private renderSummary(): void {
-    if (!this.summaryEl) return
-
-    const minutes = durationMinutes(this.from, this.to)
-    this.summaryEl.textContent = `${rangeLabel(this.from, this.to, this.time24)} · ${durationLabel(minutes)}`
   }
 
   private renderOverlays(): void {
@@ -436,6 +481,10 @@ export class EventDatePickerModal extends Modal {
 
       if (isSameDay(column.date, this.from)) block.addClass("is-start")
       if (isSameDay(column.date, this.to)) block.addClass("is-end")
+
+      block.createSpan({ cls: cls("selection-time"), text: timeRangeLabel(this.from, this.to, this.time24) })
+      const title = block.createSpan({ cls: cls("selection-title"), text: this.title.trim() || "New event" })
+      if (!this.title.trim()) title.addClass("is-placeholder")
     }
   }
 
@@ -453,11 +502,17 @@ export class EventDatePickerModal extends Modal {
       placed.forEach(({ event, overlap }, index) => {
         const { lane, lanes } = layout[index]
         const block = column.el.createDiv({ cls: cls("event"), attr: { title: event.title } })
+        const minutes = overlap.end - overlap.start
 
         block.style.top = `${(overlap.start / MINUTES_IN_DAY) * 100}%`
-        block.style.height = `${Math.max(2, ((overlap.end - overlap.start) / MINUTES_IN_DAY) * 100)}%`
+        block.style.height = `${Math.max(2, (minutes / MINUTES_IN_DAY) * 100)}%`
         block.style.left = `${(lane / lanes) * 100}%`
         block.style.width = `${(1 / lanes) * 100}%`
+
+        // Short blocks have room for one line only, so the time sits next to the title.
+        if (minutes < COMPACT_EVENT_MINUTES) block.addClass("is-compact")
+
+        block.createSpan({ cls: cls("event-time"), text: formatTime(atMinutes(column.date, overlap.start), this.time24) })
         block.createSpan({ cls: cls("event-title"), text: event.title })
       })
     }
@@ -581,7 +636,6 @@ export class EventDatePickerModal extends Modal {
     this.to = addMinutes(this.from, DEFAULT_DURATION_MINUTES)
 
     this.renderOverlays()
-    this.renderSummary()
   }
 
   private onPointerMove(event: PointerEvent): void {
@@ -599,7 +653,6 @@ export class EventDatePickerModal extends Modal {
     this.to = addMinutes(point < anchor ? anchor : point, SLOT_MINUTES)
 
     this.renderOverlays()
-    this.renderSummary()
   }
 
   private onPointerUp(): void {
@@ -608,7 +661,6 @@ export class EventDatePickerModal extends Modal {
     this.dragging = false
     this.dragAnchor = null
     this.dragColumn = null
-    this.renderSummary()
 
     if (!this.eventsDirty) return
 

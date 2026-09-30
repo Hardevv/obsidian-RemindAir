@@ -42,7 +42,11 @@ const press = (element: HTMLElement, type: string, clientY: number): void => {
   element.dispatchEvent(new MouseEvent(type, { clientY, bubbles: true }))
 }
 
-const summary = (modal: EventDatePickerModal): string => modal.contentEl.querySelector(`${PREFIX}__summary`)?.textContent ?? ""
+const selectionTime = (modal: EventDatePickerModal): string =>
+  modal.contentEl.querySelector(`${PREFIX}__selection-time`)?.textContent ?? ""
+
+const selectionTitle = (modal: EventDatePickerModal): string =>
+  modal.contentEl.querySelector(`${PREFIX}__selection-title`)?.textContent ?? ""
 
 const eventAt = (start: string, end: string, title = "Meeting", allDay = false): PickerEvent => ({
   id: `${title}:${start}`,
@@ -119,6 +123,56 @@ describe("EventDatePickerModal", () => {
     expect(dayButton(modal, "2026-10-28").hasClass("is-selected")).toBe(true)
   })
 
+  it("opens the day grid with enter, without focusing a day first", () => {
+    const { modal, onSubmit } = openModal({ title: "Meeting" })
+
+    pressKey(document.body, "Enter")
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__days`)?.hidden).toBe(false)
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(true)
+  })
+
+  it("creates the event with two presses of enter", () => {
+    const { onSubmit } = openModal({ title: "Meeting" })
+
+    pressKey(document.body, "Enter")
+    pressKey(document.body, "Enter")
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onSubmit).toHaveBeenCalledWith({ title: "Meeting", start: "2026-10-28T10:30:00", end: "2026-10-28T11:00:00" }, "confirm")
+  })
+
+  it("confirms with enter once the time grid is open", () => {
+    const { modal, onSubmit } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "Enter")
+
+    expect(onSubmit).toHaveBeenCalledWith({ title: "Meeting", start: "2026-10-28T10:30:00", end: "2026-10-28T11:00:00" }, "confirm")
+  })
+
+  it("leaves enter on a button to the button itself", () => {
+    const { modal, onSubmit } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__cancel`) as HTMLElement, "Enter")
+
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it("moves to the day grid when enter is pressed in the name field", () => {
+    const { modal, onSubmit } = openModal()
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`) as HTMLInputElement
+
+    input.value = "Dentist"
+    input.dispatchEvent(new Event("input"))
+    pressKey(input, "Enter")
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__days`)?.hidden).toBe(false)
+  })
+
   it("switches to the day grid when a date is picked", () => {
     const { modal } = openModal({ title: "Meeting" })
 
@@ -137,17 +191,79 @@ describe("EventDatePickerModal", () => {
     expect(columns(modal)).toHaveLength(3)
   })
 
-  it("sets a fifteen minute event from a single click", () => {
+  it("sets a thirty minute event from a single click", () => {
     const { modal, onSubmit } = openModal({ title: "Meeting" })
     dayButton(modal, "2026-10-28").click()
 
     press(columns(modal)[2], "pointerdown", 600)
 
-    expect(summary(modal)).toContain("10:00 → 10:15")
+    expect(selectionTime(modal)).toContain("10:00 → 10:30")
 
     confirmButton(modal).click()
 
-    expect(onSubmit).toHaveBeenCalledWith({ title: "Meeting", start: "2026-10-28T10:00:00", end: "2026-10-28T10:15:00" }, "confirm")
+    expect(onSubmit).toHaveBeenCalledWith({ title: "Meeting", start: "2026-10-28T10:00:00", end: "2026-10-28T10:30:00" }, "confirm")
+  })
+
+  it("opens with half an hour that starts in a quarter of an hour", () => {
+    const { modal } = openModal({ title: "Meeting" })
+
+    dayButton(modal, "2026-10-28").click()
+
+    expect(selectionTime(modal)).toBe("10:30 → 11:00")
+  })
+
+  it("offers Next instead of Confirm while only the day is picked", () => {
+    const { modal, onSubmit } = openModal({ title: "Meeting" })
+
+    const next = modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__next`)
+    expect(next?.textContent).toBe("Next")
+    expect(modal.contentEl.querySelector(`${PREFIX}__submit`)).toBeNull()
+
+    next?.click()
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__days`)?.hidden).toBe(false)
+  })
+
+  it("writes the range and the title on the event being created", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    press(columns(modal)[2], "pointerdown", 600)
+
+    expect(selectionTime(modal)).toBe("10:00 → 10:30")
+    expect(selectionTitle(modal)).toBe("Meeting")
+  })
+
+  it("falls back to a placeholder when there is no title yet", () => {
+    const { modal } = openModal({})
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`) as HTMLInputElement
+
+    input.value = "Meeting"
+    input.dispatchEvent(new Event("input"))
+    dayButton(modal, "2026-10-28").click()
+    press(columns(modal)[2], "pointerdown", 600)
+
+    expect(selectionTitle(modal)).toBe("Meeting")
+
+    input.value = ""
+    input.dispatchEvent(new Event("input"))
+
+    expect(selectionTitle(modal)).toBe("New event")
+  })
+
+  it("updates the title on the block while typing", () => {
+    const { modal } = openModal({})
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`) as HTMLInputElement
+
+    input.value = "Standup"
+    input.dispatchEvent(new Event("input"))
+    dayButton(modal, "2026-10-28").click()
+
+    input.value = "Standup with Anna"
+    input.dispatchEvent(new Event("input"))
+
+    expect(selectionTitle(modal)).toBe("Standup with Anna")
   })
 
   it("sets the end of the event by dragging", () => {
@@ -159,7 +275,7 @@ describe("EventDatePickerModal", () => {
     press(column, "pointermove", 690)
     column.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }))
 
-    expect(summary(modal)).toContain("10:00 → 11:45")
+    expect(selectionTime(modal)).toContain("10:00 → 11:45")
 
     confirmButton(modal).click()
 
@@ -174,7 +290,7 @@ describe("EventDatePickerModal", () => {
     press(column, "pointerdown", 690)
     press(column, "pointermove", 600)
 
-    expect(summary(modal)).toContain("10:00 → 11:45")
+    expect(selectionTime(modal)).toContain("10:00 → 11:45")
   })
 
   it("moves the start to the picked day and keeps the time", () => {
@@ -184,7 +300,7 @@ describe("EventDatePickerModal", () => {
     press(columns(modal)[0], "pointerdown", 480)
     confirmButton(modal).click()
 
-    expect(onSubmit.mock.calls[0][0]).toMatchObject({ start: "2026-10-19T08:00:00", end: "2026-10-19T08:15:00" })
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ start: "2026-10-19T08:00:00", end: "2026-10-19T08:30:00" })
   })
 
   it("goes back to the month view", () => {
@@ -235,7 +351,7 @@ describe("EventDatePickerModal", () => {
     dayButton(modal, "2026-10-28").click()
     copyButton(modal).click()
 
-    expect(onSubmit).toHaveBeenCalledWith({ title: "Dentist", start: "2026-10-28T10:15:00", end: "2026-10-28T10:30:00" }, "copy-link")
+    expect(onSubmit).toHaveBeenCalledWith({ title: "Dentist", start: "2026-10-28T10:30:00", end: "2026-10-28T11:00:00" }, "copy-link")
   })
 
   it("closes after a submit", () => {
@@ -284,7 +400,36 @@ describe("EventDatePickerModal", () => {
     expect(blocks[0].getAttribute("title")).toBe("Meeting")
   })
 
-  it("puts all day events in the day header", () => {
+  it("labels a block with the time it starts", () => {
+    const { modal } = openModal({ title: "Meeting", eventSource: source([eventAt("2026-10-28T10:00", "2026-10-28T11:00")]) })
+
+    dayButton(modal, "2026-10-28").click()
+
+    const block = columns(modal)[2].querySelector<HTMLElement>(`${PREFIX}__event`)
+    expect(block?.querySelector(`${PREFIX}__event-time`)?.textContent).toBe("10:00")
+    expect(block?.querySelector(`${PREFIX}__event-title`)?.textContent).toBe("Meeting")
+  })
+
+  it("keeps the time next to the title on a short block", () => {
+    const { modal } = openModal({
+      title: "Meeting",
+      eventSource: source([eventAt("2026-10-28T10:00", "2026-10-28T10:15")]),
+    })
+
+    dayButton(modal, "2026-10-28").click()
+
+    expect(columns(modal)[2].querySelector<HTMLElement>(`${PREFIX}__event`)?.hasClass("is-compact")).toBe(true)
+  })
+
+  it("stacks the time above the title on a long block", () => {
+    const { modal } = openModal({ title: "Meeting", eventSource: source([eventAt("2026-10-28T10:00", "2026-10-28T11:00")]) })
+
+    dayButton(modal, "2026-10-28").click()
+
+    expect(columns(modal)[2].querySelector<HTMLElement>(`${PREFIX}__event`)?.hasClass("is-compact")).toBe(false)
+  })
+
+  it("puts all day events in their own band", () => {
     const { modal } = openModal({
       title: "Meeting",
       eventSource: source([eventAt("2026-10-28T00:00", "2026-10-29T00:00", "Trip", true)]),
@@ -292,9 +437,11 @@ describe("EventDatePickerModal", () => {
 
     dayButton(modal, "2026-10-28").click()
 
-    const heads = modal.contentEl.querySelectorAll(`${PREFIX}__all-day`)
-    expect(heads).toHaveLength(1)
-    expect(heads[0].textContent).toBe("Trip")
+    const chips = modal.contentEl.querySelectorAll(`${PREFIX}__all-day`)
+    expect(chips).toHaveLength(1)
+    expect(chips[0].textContent).toBe("Trip")
+    expect(chips[0].parentElement?.hasClass("RemindAir-event-picker__allday-cell")).toBe(true)
+    expect(columns(modal)[2].querySelector(`${PREFIX}__event`)).toBeNull()
   })
 
   it("redraws when the google events arrive", async () => {

@@ -208,6 +208,16 @@
   width: min(420px, 94vw);
 }
 
+.RemindAir-event-picker-modal .modal-header {
+  margin-bottom: 0.4em;
+}
+
+.RemindAir-event-picker-modal .modal-title {
+  font-size: var(--font-ui-medium, 15px);
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
 .RemindAir-event-picker-modal .modal-content {
   display: flex;
   flex-direction: column;
@@ -241,6 +251,35 @@
   gap: 8px;
 }
 
+.RemindAir-event-picker__month-header {
+  justify-content: center;
+}
+
+.RemindAir-event-picker__month-nav,
+.RemindAir-event-picker__days-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.RemindAir-event-picker__days-side {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.RemindAir-event-picker__days-side.is-right {
+  justify-content: flex-end;
+}
+
+.RemindAir-event-picker__back {
+  height: var(--input-height);
+  padding: 0 var(--size-4-3);
+  font-size: var(--font-ui-small);
+}
+
 .RemindAir-event-picker__nav {
   width: 28px;
   height: 28px;
@@ -255,9 +294,14 @@
 
 .RemindAir-event-picker__month-label,
 .RemindAir-event-picker__days-label {
-  flex: 1;
+  flex: 0 0 auto;
   text-align: center;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.RemindAir-event-picker__month-label {
+  min-width: 8.5em;
 }
 
 .RemindAir-event-picker__month-grid {
@@ -330,12 +374,38 @@
 
 .RemindAir-event-picker__columns-head {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
   position: sticky;
   top: 0;
   z-index: 3;
   padding-bottom: 4px;
-  background: var(--background-primary);
+  background: var(--modal-background, var(--background-primary));
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.RemindAir-event-picker__columns-head-row {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.RemindAir-event-picker__columns-head-row.is-allday .RemindAir-event-picker__gutter-head {
+  box-sizing: border-box;
+  font-size: 0.6em;
+  line-height: 1.4;
+  color: var(--text-faint);
+  text-align: right;
+  padding-right: 6px;
+  text-transform: uppercase;
+}
+
+.RemindAir-event-picker__allday-cell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .RemindAir-event-picker__columns-body {
@@ -358,8 +428,15 @@
   border-radius: 6px;
 }
 
-.RemindAir-event-picker__day-head.is-today {
-  background: var(--background-modifier-hover);
+.RemindAir-event-picker__day-head.is-today .RemindAir-event-picker__day-head-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 .RemindAir-event-picker__day-head-weekday {
@@ -373,7 +450,7 @@
 }
 
 .RemindAir-event-picker__scroll {
-  max-height: 55vh;
+  max-height: min(60vh, 620px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -397,6 +474,7 @@
   flex: 1;
   display: flex;
   gap: 4px;
+  overflow: hidden;
   touch-action: none;
   user-select: none;
   background-image: repeating-linear-gradient(
@@ -448,11 +526,38 @@
   pointer-events: none;
 }
 
+.RemindAir-event-picker__event-time {
+  display: block;
+  font-size: 0.9em;
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .RemindAir-event-picker__event-title {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A block under half an hour is one line tall, so the time moves next to the title. */
+.RemindAir-event-picker__event.is-compact {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0 3px;
+  font-size: 0.65em;
+  line-height: 1.2;
+}
+
+.RemindAir-event-picker__event.is-compact .RemindAir-event-picker__event-time {
+  flex: 0 0 auto;
+}
+
+.RemindAir-event-picker__event.is-compact .RemindAir-event-picker__event-title {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .RemindAir-event-picker__all-day {
@@ -461,10 +566,11 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   border-radius: 4px;
-  background: var(--background-modifier-hover);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
   font-size: 0.65em;
-  padding: 0 3px;
-  margin-top: 2px;
+  line-height: 1.5;
+  padding: 0 4px;
 }
 
 .RemindAir-event-picker__now {
@@ -488,27 +594,51 @@
   background: var(--color-red, #e5484d);
 }
 
+/* The event being created is a draft, so it reads as an outline instead of a saved block. */
 .RemindAir-event-picker__selection {
   position: absolute;
   z-index: 3;
   left: 2px;
   right: 2px;
+  box-sizing: border-box;
+  min-height: 30px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px dashed var(--interactive-accent);
   border-radius: 4px;
-  background: var(--interactive-accent);
-  opacity: 0.85;
+  background: color-mix(in srgb, var(--interactive-accent) 22%, var(--modal-background, var(--background-primary)));
+  color: var(--text-normal);
+  font-size: 0.7em;
+  line-height: 1.15;
+  padding: 1px 4px;
   pointer-events: none;
+}
+
+.RemindAir-event-picker__selection-time {
+  font-size: 0.9em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.RemindAir-event-picker__selection-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.RemindAir-event-picker__selection-title.is-placeholder {
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .RemindAir-event-picker__footer {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.RemindAir-event-picker__summary {
-  text-align: center;
-  font-size: 0.95em;
-  color: var(--text-normal);
+  justify-content: flex-end;
+  margin-top: 8px;
 }
 
 .RemindAir-event-picker__actions {
