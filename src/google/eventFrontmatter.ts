@@ -1,42 +1,27 @@
 import type ObsidianNotifierPlugin from "main"
-import { MarkdownView, Notice, type Editor, type EditorPosition, type TFile } from "obsidian"
+import { MarkdownView, Notice, normalizePath, type Editor, type EditorPosition } from "obsidian"
 import { EventDatePickerModal, type EventDatePickerResult } from "src/components/eventDatePicker/eventDatePickerModal"
 import { createEventSource } from "src/components/eventDatePicker/eventSources"
-import { ensureFolder, noteBaseName, parseNoteName, uniqueNotePath } from "src/google/eventsSync"
+import { ensureFolder, noteBaseName, uniqueNotePath } from "src/google/eventsSync"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import { PLUGIN_NAME } from "src/utils/constants"
-import { formatLocalDateTime } from "src/utils/dates"
-
-export const EVENT_LEAD_MINUTES = 15
-export const EVENT_DURATION_MINUTES = 60
-
-export const eventDefaults = (now: Date): { start: string; end: string } => {
-  const start = new Date(now.getTime() + EVENT_LEAD_MINUTES * 60 * 1000)
-  start.setSeconds(0, 0)
-  const end = new Date(start.getTime() + EVENT_DURATION_MINUTES * 60 * 1000)
-
-  return { start: formatLocalDateTime(start), end: formatLocalDateTime(end) }
-}
 
 const eventsFolder = (plugin: ObsidianNotifierPlugin): string =>
   (plugin.settings.googleCalendar.eventsFolder || DEFAULT_GCAL_SETTINGS.eventsFolder).replace(/^\/+|\/+$/g, "")
 
 const linkAlias = (title: string): string => title.replace(/[[\]|]/g, "-").trim() || "event"
 
+const eventNotePath = (plugin: ObsidianNotifierPlugin, start: string, title: string): string => {
+  const folder = eventsFolder(plugin)
+  const base = `${noteBaseName(start, title)}.md`
+
+  return normalizePath(folder ? `${folder}/${base}` : base)
+}
+
 export const buildEventLink = (path: string, title: string): string => `[[${path.replace(/\.md$/, "")}|${linkAlias(title)}]]`
 
 const noteContent = (start: string, end: string): string =>
   ["---", `start: ${JSON.stringify(start)}`, `end: ${JSON.stringify(end)}`, "---", ""].join("\n")
-
-/** The file name carries the date, so a note filled outside the sync gets the prefix right away. */
-const renameToStart = async (plugin: ObsidianNotifierPlugin, file: TFile, start: string): Promise<void> => {
-  const title = parseNoteName(file.basename).title
-  if (!title) return
-
-  const folder = file.path.split("/").slice(0, -1).join("/")
-  const target = uniqueNotePath(plugin.app.vault, folder, noteBaseName(start, title), file.path)
-  if (target !== file.path) await plugin.app.fileManager.renameFile(file, target)
-}
 
 interface CreateEventContext {
   editor: Editor | null
@@ -99,43 +84,12 @@ export const createEvent = async (plugin: ObsidianNotifierPlugin): Promise<boole
     title: selection || null,
     eventSource: createEventSource(plugin),
     onSubmit: (result, action) => createEventNote(plugin, result, { editor, range, copyLink: action === "copy-link" }),
+    validate: (result) =>
+      plugin.app.vault.getAbstractFileByPath(eventNotePath(plugin, result.start, result.title))
+        ? `An event called "${result.title}" already starts at that time.`
+        : null,
   }).open()
 
   return true
 }
 
-export const fillEventFrontmatter = async (plugin: ObsidianNotifierPlugin): Promise<void> => {
-  const editor = plugin.app.workspace.getActiveViewOfType(MarkdownView)?.editor ?? null
-  if (editor?.getSelection().trim()) {
-    await createEvent(plugin)
-
-    return
-  }
-
-  const file: TFile | null = plugin.app.workspace.getActiveFile()
-  if (!file) {
-    new Notice(`${PLUGIN_NAME}: open a note first.`)
-    return
-  }
-
-  const folder = eventsFolder(plugin)
-  const { start, end } = eventDefaults(new Date())
-
-  let resolvedStart = start
-
-  await plugin.app.fileManager.processFrontMatter(file, (frontmatter) => {
-    frontmatter.start = frontmatter.start || start
-    frontmatter.end = frontmatter.end || end
-    resolvedStart = String(frontmatter.start ?? start)
-  })
-
-  await renameToStart(plugin, file, resolvedStart)
-
-  if (folder && !file.path.startsWith(`${folder}/`)) {
-    new Notice(`${PLUGIN_NAME}: event properties filled. Move the note into ${folder} so it can be synced.`)
-
-    return
-  }
-
-  new Notice(`${PLUGIN_NAME}: event properties filled. The event is created on the next sync.`)
-}

@@ -239,9 +239,9 @@
   font-size: 1.1em;
 }
 
-.RemindAir-event-picker__hint {
-  color: var(--text-muted);
-  font-size: 0.9em;
+.RemindAir-event-picker__error {
+  color: var(--text-error);
+  font-size: var(--font-ui-small);
 }
 
 .RemindAir-event-picker__month-header,
@@ -255,6 +255,10 @@
   justify-content: center;
 }
 
+.RemindAir-event-picker__days-header {
+  justify-content: center;
+}
+
 .RemindAir-event-picker__month-nav,
 .RemindAir-event-picker__days-nav {
   display: flex;
@@ -263,21 +267,28 @@
   flex: 0 0 auto;
 }
 
-.RemindAir-event-picker__days-side {
-  flex: 1;
+.RemindAir-event-picker__back {
   display: flex;
   align-items: center;
-  min-width: 0;
-}
-
-.RemindAir-event-picker__days-side.is-right {
-  justify-content: flex-end;
-}
-
-.RemindAir-event-picker__back {
+  gap: 4px;
+  flex: 0 0 auto;
   height: var(--input-height);
-  padding: 0 var(--size-4-3);
+  margin-right: auto;
+  padding: 0 var(--size-4-2);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
   font-size: var(--font-ui-small);
+}
+
+.RemindAir-event-picker__back:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.RemindAir-event-picker__back .svg-icon {
+  width: 1em;
+  height: 1em;
 }
 
 .RemindAir-event-picker__nav {

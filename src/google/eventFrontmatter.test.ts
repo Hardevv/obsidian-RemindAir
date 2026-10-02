@@ -3,7 +3,7 @@ import type ObsidianNotifierPlugin from "main"
 import { Notice } from "tests/mocks/obsidian"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import { formatLocalDateTime } from "src/utils/dates"
-import { buildEventLink, createEvent, eventDefaults, fillEventFrontmatter } from "src/google/eventFrontmatter"
+import { buildEventLink, createEvent } from "src/google/eventFrontmatter"
 
 const picker = vi.hoisted(() => {
   class EventDatePickerModalMock {
@@ -13,7 +13,11 @@ const picker = vi.hoisted(() => {
 
     constructor(
       public plugin: unknown,
-      public options: { title?: string | null; onSubmit: (result: unknown, action: string) => unknown },
+      public options: {
+        title?: string | null
+        onSubmit: (result: unknown, action: string) => unknown
+        validate?: (result: { title: string; start: string; end: string }) => string | null
+      },
     ) {
       EventDatePickerModalMock.instances.push(this)
     }
@@ -97,22 +101,6 @@ describe("formatLocalDateTime", () => {
   })
 })
 
-describe("eventDefaults", () => {
-  it("starts in fifteen minutes and lasts an hour", () => {
-    expect(eventDefaults(new Date(2026, 9, 28, 10, 7, 42))).toEqual({
-      start: "2026-10-28T10:22:00",
-      end: "2026-10-28T11:22:00",
-    })
-  })
-
-  it("crosses midnight", () => {
-    expect(eventDefaults(new Date(2026, 9, 28, 23, 50, 0))).toEqual({
-      start: "2026-10-29T00:05:00",
-      end: "2026-10-29T01:05:00",
-    })
-  })
-})
-
 describe("buildEventLink", () => {
   it("drops the extension and keeps the selected text as the alias", () => {
     expect(buildEventLink("Calendar/2026-10-28 │ Meeting.md", "Meeting")).toBe("[[Calendar/2026-10-28 │ Meeting|Meeting]]")
@@ -152,6 +140,18 @@ describe("createEvent", () => {
 
     expect(lastPicker().options.title).toBe("Meeting with Bart")
     expect(lastPicker().open).toHaveBeenCalledTimes(1)
+  })
+
+  it("blocks a result that would land on an existing note", async () => {
+    const { plugin } = createPlugin({ existingPaths: ["Calendar/2026-10-28 10-30 │ Dentist.md"] })
+
+    await createEvent(plugin)
+
+    const validate = lastPicker().options.validate
+    if (!validate) throw new Error("no validator")
+
+    expect(validate({ title: "Dentist", start: "2026-10-28T10:30:00", end: "2026-10-28T11:00:00" })).toContain("already starts")
+    expect(validate({ title: "Dentist", start: "2026-10-28T12:00:00", end: "2026-10-28T12:30:00" })).toBeNull()
   })
 
   it("opens the picker without a title when nothing is selected", async () => {
@@ -222,80 +222,5 @@ describe("createEvent", () => {
 
     expect(created).toHaveLength(1)
     expect(Notice.instances.at(-1)?.message).toContain("could not be copied")
-  })
-})
-
-describe("fillEventFrontmatter", () => {
-  beforeEach(() => {
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
-    Notice.instances = []
-    EventDatePickerModalMock.instances = []
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it("opens the picker instead of touching the note when there is a selection", async () => {
-    const { plugin, created, processFrontMatter } = createPlugin({ selection: "Meeting with Bart" })
-
-    await fillEventFrontmatter(plugin)
-
-    expect(created).toHaveLength(0)
-    expect(processFrontMatter).not.toHaveBeenCalled()
-    expect(EventDatePickerModalMock.instances).toHaveLength(1)
-    expect(EventDatePickerModalMock.instances[0].options.title).toBe("Meeting with Bart")
-  })
-
-  it("fills the title from the file name and the default times", async () => {
-    const { plugin, frontmatter, renamed } = createPlugin()
-
-    await fillEventFrontmatter(plugin)
-
-    expect(frontmatter).toEqual({
-      start: "2026-10-28T10:22:00",
-      end: "2026-10-28T11:22:00",
-    })
-    expect(renamed).toEqual(["Calendar/2026-10-28 10-22 │ Meeting.md"])
-  })
-
-  it("keeps the values that are already there", async () => {
-    const { plugin, frontmatter, renamed } = createPlugin({
-      frontmatter: { start: "2026-11-02T10:00:00", end: "2026-11-02T11:00:00" },
-    })
-
-    await fillEventFrontmatter(plugin)
-
-    expect(frontmatter).toEqual({
-      start: "2026-11-02T10:00:00",
-      end: "2026-11-02T11:00:00",
-    })
-    expect(renamed).toEqual(["Calendar/2026-11-02 10-00 │ Meeting.md"])
-  })
-
-  it("tells the user when the note is outside the events folder", async () => {
-    const { plugin } = createPlugin({ file: { path: "Inbox/Idea.md", basename: "Idea" } })
-
-    await fillEventFrontmatter(plugin)
-
-    expect(Notice.instances.at(-1)?.message).toContain("Move the note into Calendar")
-  })
-
-  it("confirms when the note is in the events folder", async () => {
-    const { plugin } = createPlugin()
-
-    await fillEventFrontmatter(plugin)
-
-    expect(Notice.instances.at(-1)?.message).toContain("created on the next sync")
-  })
-
-  it("does nothing without an active note", async () => {
-    const { plugin, processFrontMatter } = createPlugin({ file: null })
-
-    await fillEventFrontmatter(plugin)
-
-    expect(processFrontMatter).not.toHaveBeenCalled()
-    expect(Notice.instances.at(-1)?.message).toContain("open a note first")
   })
 })

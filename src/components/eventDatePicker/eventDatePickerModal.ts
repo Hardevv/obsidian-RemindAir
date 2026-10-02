@@ -53,6 +53,8 @@ export interface EventDatePickerOptions {
   dayCount?: number
   eventSource?: PickerEventSource
   onSubmit: (result: EventDatePickerResult, action: EventDatePickerAction) => unknown
+  /** Returns a message when the result cannot be created, for example a note that already exists. */
+  validate?: (result: EventDatePickerResult) => string | null
 }
 
 const DEFAULT_DURATION_MINUTES = 30
@@ -67,6 +69,8 @@ interface Column {
   date: Date
   el: HTMLElement
 }
+
+type PickerFocus = { target: "title"; caret: number | null } | { target: "calendar" }
 
 export class EventDatePickerModal extends Modal {
   private plugin: ObsidianNotifierPlugin
@@ -88,7 +92,7 @@ export class EventDatePickerModal extends Modal {
   private monthEl!: HTMLElement
   private daysEl!: HTMLElement
   private footerEl!: HTMLElement
-  private hintEl!: HTMLElement
+  private errorEl!: HTMLElement
   private scrollEl!: HTMLElement
   private nowEl: HTMLElement | null = null
   private scrollTop = 0
@@ -128,7 +132,7 @@ export class EventDatePickerModal extends Modal {
 
     // Without a focused day the arrows go to the document and never reach the grid.
     if (this.titleInput) this.titleInput.focus()
-    else if (this.calendarVisible) this.syncMonthFocus()
+    else this.syncMonthFocus()
   }
 
   onClose(): void {
@@ -151,11 +155,8 @@ export class EventDatePickerModal extends Modal {
     return window.innerWidth < NARROW_WIDTH ? NARROW_DAY_COUNT : WIDE_DAY_COUNT
   }
 
-  private get calendarVisible(): boolean {
-    return !this.titleMode || this.title.trim().length > 0
-  }
-
   private render(): void {
+    const focus = this.captureFocus()
     this.runCleanups()
     this.contentEl.empty()
 
@@ -166,16 +167,19 @@ export class EventDatePickerModal extends Modal {
 
     if (this.titleMode) this.renderTitle(root)
 
-    this.hintEl = root.createDiv({ cls: cls("hint"), text: "Type a name to pick a date." })
     this.monthEl = root.createDiv({ cls: cls("month") })
     this.daysEl = root.createDiv({ cls: cls("days") })
+    this.daysEl.tabIndex = -1
+    this.errorEl = root.createDiv({ cls: cls("error") })
+    this.errorEl.hidden = true
     this.footerEl = root.createDiv({ cls: cls("footer") })
 
     this.events = this.currentEvents()
     this.renderMonth()
     this.renderDays()
     this.renderFooter()
-    this.syncVisibility()
+    this.syncMode()
+    this.restoreFocus(focus)
     this.loadEvents()
 
     // One listener for the whole modal, so a mode change cannot leave two of them behind.
@@ -198,35 +202,69 @@ export class EventDatePickerModal extends Modal {
     input.value = this.title
     input.addEventListener("input", () => {
       this.title = input.value
-      this.syncVisibility()
+      this.clearError()
       if (this.mode === "days") this.renderOverlays()
     })
     input.addEventListener("keydown", (event: KeyboardEvent) => {
-      if (event.key === "ArrowDown" && this.calendarVisible) {
-        event.preventDefault()
-        this.syncMonthFocus()
+      if (event.key !== "Enter" && event.key !== "ArrowDown") return
 
-        return
-      }
-
-      if (event.key !== "Enter") return
       event.preventDefault()
-      if (!this.calendarVisible) return
-
-      if (this.mode === "month") this.openDay(this.focusedDay)
-      else this.submit("confirm")
+      this.focusCalendar()
     })
 
     this.titleInput = input
   }
 
-  private syncVisibility(): void {
-    const visible = this.calendarVisible
+  private syncMode(): void {
+    this.monthEl.hidden = this.mode !== "month"
+    this.daysEl.hidden = this.mode !== "days"
+  }
 
-    this.hintEl.hidden = visible
-    this.monthEl.hidden = !visible || this.mode !== "month"
-    this.daysEl.hidden = !visible || this.mode !== "days"
-    this.footerEl.hidden = !visible
+  /** A re-render builds new nodes, so the focus has to be carried over by hand. */
+  private captureFocus(): PickerFocus | null {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement)) return null
+
+    if (this.titleInput && active === this.titleInput) {
+      return { target: "title", caret: this.titleInput.selectionStart }
+    }
+
+    if (this.monthEl?.contains(active) || this.daysEl?.contains(active)) return { target: "calendar" }
+
+    return null
+  }
+
+  private restoreFocus(focus: PickerFocus | null): void {
+    if (!focus) return
+
+    if (focus.target === "title") {
+      const input = this.titleInput
+      if (!input) return
+
+      input.focus()
+      if (focus.caret !== null) input.setSelectionRange(focus.caret, focus.caret)
+
+      return
+    }
+
+    if (this.mode === "month") this.syncMonthFocus()
+    else this.daysEl.focus()
+  }
+
+  /** Enter in the name field hands the keyboard to the calendar instead of creating anything. */
+  private focusCalendar(): void {
+    if (this.mode === "month") this.syncMonthFocus()
+    else this.daysEl.focus()
+  }
+
+  private showError(message: string): void {
+    this.errorEl.textContent = message
+    this.errorEl.hidden = false
+  }
+
+  private clearError(): void {
+    this.errorEl.textContent = ""
+    this.errorEl.hidden = true
   }
 
   private renderMonth(): void {
@@ -275,7 +313,7 @@ export class EventDatePickerModal extends Modal {
 
   private onDaysKeydown(event: KeyboardEvent): void {
     if (this.closed || !this.modalEl.isConnected) return
-    if (this.mode !== "days" || !this.calendarVisible) return
+    if (this.mode !== "days") return
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea, button, a")) return
 
     if (event.key === "Enter") {
@@ -355,7 +393,7 @@ export class EventDatePickerModal extends Modal {
 
   private onMonthKeydown(event: KeyboardEvent): void {
     if (this.closed || !this.modalEl.isConnected) return
-    if (this.mode !== "month" || !this.calendarVisible) return
+    if (this.mode !== "month") return
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea")) return
 
     const key = event.target instanceof HTMLElement ? event.target.dataset.date : undefined
@@ -432,21 +470,10 @@ export class EventDatePickerModal extends Modal {
 
     const days = dayColumns(this.anchorDate, this.dayCount, this.weekStartsOn)
     const header = this.daysEl.createDiv({ cls: cls("days-header") })
-
-    const left = header.createDiv({ cls: `${cls("days-side")} is-left` })
-    const back = left.createEl("button", { cls: cls("back"), text: "Month" })
-    back.addEventListener("click", () => {
-      this.mode = "month"
-      this.render()
-      this.syncMonthFocus()
-    })
-
     const nav = header.createDiv({ cls: cls("days-nav") })
     this.iconButton(nav, "chevron-left", "Previous days", () => this.shiftDays(-this.dayCount))
     nav.createSpan({ cls: cls("days-label"), text: daysHeaderLabel(days) })
     this.iconButton(nav, "chevron-right", "Next days", () => this.shiftDays(this.dayCount))
-
-    header.createDiv({ cls: `${cls("days-side")} is-right` })
 
     this.scrollEl = this.daysEl.createDiv({ cls: cls("scroll") })
 
@@ -515,6 +542,17 @@ export class EventDatePickerModal extends Modal {
 
   private renderFooter(): void {
     this.footerEl.empty()
+
+    if (this.mode === "days") {
+      const back = this.footerEl.createEl("button", { cls: cls("back") })
+      setIcon(back, "chevron-left")
+      back.createSpan({ text: "Month" })
+      back.addEventListener("click", () => {
+        this.mode = "month"
+        this.render()
+        this.syncMonthFocus()
+      })
+    }
 
     const actions = this.footerEl.createDiv({ cls: cls("actions") })
 
@@ -795,10 +833,24 @@ export class EventDatePickerModal extends Modal {
   }
 
   private submit(action: EventDatePickerAction): void {
-    const title = this.title.trim() || "Untitled event"
-    const end = this.to.getTime() > this.from.getTime() ? this.to : addMinutes(this.from, DEFAULT_DURATION_MINUTES)
+    const title = this.title.trim()
+    if (!title) {
+      this.showError("Give the event a name.")
+      this.titleInput?.focus()
 
-    void this.options.onSubmit({ title, start: formatLocalDateTime(this.from), end: formatLocalDateTime(end) }, action)
+      return
+    }
+
+    const end = this.to.getTime() > this.from.getTime() ? this.to : addMinutes(this.from, DEFAULT_DURATION_MINUTES)
+    const result = { title, start: formatLocalDateTime(this.from), end: formatLocalDateTime(end) }
+    const error = this.options.validate?.(result) ?? null
+    if (error) {
+      this.showError(error)
+
+      return
+    }
+
+    void this.options.onSubmit(result, action)
     this.close()
   }
 }

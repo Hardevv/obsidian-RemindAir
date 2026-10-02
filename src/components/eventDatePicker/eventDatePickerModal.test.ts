@@ -250,7 +250,7 @@ describe("EventDatePickerModal", () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
-  it("moves to the day grid when enter is pressed in the name field", () => {
+  it("hands the keyboard to the calendar when enter is pressed in the name field", () => {
     const { modal, onSubmit } = openModal()
     const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`) as HTMLInputElement
 
@@ -259,7 +259,56 @@ describe("EventDatePickerModal", () => {
     pressKey(input, "Enter")
 
     expect(onSubmit).not.toHaveBeenCalled()
+    expect(focusedDay()).toBe("2026-10-28")
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(false)
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__days`)?.hidden).toBe(true)
+  })
+
+  it("keeps the calendar on screen while the name is empty", () => {
+    const { modal } = openModal()
+
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(false)
+    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__footer`)?.hidden).toBe(false)
+    expect(modal.contentEl.querySelector(`${PREFIX}__error`)?.textContent).toBe("")
+  })
+
+  it("refuses to create an event without a name", () => {
+    const { modal, onSubmit } = openModal()
+
+    pressKey(document.body, "Enter")
+    pressKey(document.body, "Enter")
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(modal.contentEl.querySelector(`${PREFIX}__error`)?.textContent).toBe("Give the event a name.")
     expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__days`)?.hidden).toBe(false)
+  })
+
+  it("shows the message from the validator and stays open", () => {
+    const { modal, onSubmit } = openModal({
+      title: "Meeting",
+      validate: () => "An event called \"Meeting\" already starts at that time.",
+    })
+
+    dayButton(modal, "2026-10-28").click()
+    confirmButton(modal).click()
+
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(modal.contentEl.querySelector(`${PREFIX}__error`)?.textContent).toContain("already starts")
+    expect(modal.contentEl.children).not.toHaveLength(0)
+  })
+
+  it("clears the error as soon as the name changes", () => {
+    const { modal } = openModal()
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`) as HTMLInputElement
+
+    pressKey(document.body, "Enter")
+    pressKey(document.body, "Enter")
+    expect(modal.contentEl.querySelector(`${PREFIX}__error`)?.textContent).toBe("Give the event a name.")
+
+    input.value = "Dentist"
+    input.dispatchEvent(new Event("input"))
+
+    expect(modal.contentEl.querySelector(`${PREFIX}__error`)?.textContent).toBe("")
   })
 
   it("switches to the day grid when a date is picked", () => {
@@ -399,34 +448,6 @@ describe("EventDatePickerModal", () => {
     modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__back`)?.click()
 
     expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(false)
-  })
-
-  it("asks for a name before showing the calendar", () => {
-    const { modal } = openModal()
-
-    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__hint`)?.hidden).toBe(false)
-    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(true)
-
-    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
-    if (!input) throw new Error("no title input")
-    input.value = "Dentist"
-    input.dispatchEvent(new Event("input"))
-
-    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(false)
-    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__hint`)?.hidden).toBe(true)
-  })
-
-  it("hides the calendar again when the name is cleared", () => {
-    const { modal } = openModal()
-    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
-    if (!input) throw new Error("no title input")
-
-    input.value = "Dentist"
-    input.dispatchEvent(new Event("input"))
-    input.value = "   "
-    input.dispatchEvent(new Event("input"))
-
-    expect(modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__month`)?.hidden).toBe(true)
   })
 
   it("passes the typed name and asks for the link copy", () => {
@@ -648,6 +669,64 @@ describe("EventDatePickerModal", () => {
     const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
 
     expect(document.activeElement).toBe(input)
+  })
+
+  // The real picker loads events from Google right after opening, and that render used to drop the focus.
+  const flushLoad = async (): Promise<void> => {
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  const lateSource = () => source([], async () => [eventAt("2026-10-28T10:00", "2026-10-28T11:00")])
+
+  it("keeps the focus in the name field when the events arrive", async () => {
+    const { modal } = openModal({ eventSource: lateSource() })
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
+    if (!input) throw new Error("no title input")
+    input.value = "Dentist"
+    input.dispatchEvent(new Event("input"))
+
+    await flushLoad()
+
+    const refreshed = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
+    expect(refreshed).not.toBe(input)
+    expect(document.activeElement).toBe(refreshed)
+    expect(refreshed?.value).toBe("Dentist")
+  })
+
+  it("keeps the caret in the name field when the events arrive", async () => {
+    const { modal } = openModal({ eventSource: lateSource() })
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
+    if (!input) throw new Error("no title input")
+    input.value = "Dentist"
+    input.dispatchEvent(new Event("input"))
+    input.setSelectionRange(3, 3)
+
+    await flushLoad()
+
+    expect(modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)?.selectionStart).toBe(3)
+  })
+
+  it("keeps the calendar focused when the events arrive", async () => {
+    const { modal } = openModal({ eventSource: lateSource() })
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
+    if (!input) throw new Error("no title input")
+    pressKey(input, "Enter")
+
+    expect(focusedDay()).toBe("2026-10-28")
+
+    await flushLoad()
+
+    expect(focusedDay()).toBe("2026-10-28")
+  })
+
+  it("hands the keyboard to the day grid when a day is picked", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    const button = dayButton(modal, "2026-10-28")
+    button.focus()
+    button.click()
+
+    expect(document.activeElement).toBe(modal.contentEl.querySelector(`${PREFIX}__days`))
   })
 
   it("drops into the calendar with the down arrow from the name field", () => {
