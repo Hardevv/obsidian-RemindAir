@@ -276,11 +276,81 @@ export class EventDatePickerModal extends Modal {
   private onDaysKeydown(event: KeyboardEvent): void {
     if (this.closed || !this.modalEl.isConnected) return
     if (this.mode !== "days" || !this.calendarVisible) return
-    if (event.key !== "Enter") return
     if (event.target instanceof HTMLElement && event.target.closest("input, textarea, button, a")) return
 
+    if (event.key === "Enter") {
+      event.preventDefault()
+      this.submit("confirm")
+
+      return
+    }
+
+    const minutes = event.key === "ArrowUp" ? -SLOT_MINUTES : event.key === "ArrowDown" ? SLOT_MINUTES : 0
+    const days = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0
+    if (!minutes && !days) return
+
     event.preventDefault()
-    this.submit("confirm")
+
+    const moved = event.shiftKey ? this.extendSelection(days, minutes) : this.moveSelection(days, minutes)
+    if (!moved) return
+
+    this.syncDaysWindow(days)
+    this.renderOverlays()
+    this.keepSelectionVisible()
+  }
+
+  /** Moves the whole selection, keeping its length. */
+  private moveSelection(dayDelta: number, minutes: number): boolean {
+    const duration = this.duration
+    const startMinutes = minutesFromMidnight(this.from) + minutes
+    if (startMinutes < 0 || startMinutes + duration > MINUTES_IN_DAY) return false
+
+    this.from = atMinutes(addDays(startOfDay(this.from), dayDelta), startMinutes)
+    this.to = addMinutes(this.from, duration)
+    this.focusedDay = startOfDay(this.from)
+
+    return true
+  }
+
+  /** Shift plus an arrow stretches the end of the selection. */
+  private extendSelection(dayDelta: number, minutes: number): boolean {
+    if (dayDelta) {
+      const candidate = atMinutes(addDays(startOfDay(this.to), dayDelta), minutesFromMidnight(this.to))
+      if (candidate.getTime() <= this.from.getTime()) return false
+
+      this.to = candidate
+
+      return true
+    }
+
+    const candidate = addMinutes(this.to, minutes)
+    if (candidate.getTime() <= this.from.getTime()) return false
+    if (candidate.getTime() > addDays(startOfDay(this.to), 1).getTime()) return false
+
+    this.to = candidate
+
+    return true
+  }
+
+  /** Walks the visible days when the selection leaves the window. */
+  private syncDaysWindow(dayDelta: number): void {
+    if (this.columns.some((column) => isSameDay(column.date, this.from))) return
+
+    // The week layout snaps to the week start, so it follows the day instead of the delta.
+    this.anchorDate = this.dayCount >= 7 ? startOfDay(this.from) : addDays(this.anchorDate, dayDelta)
+    this.render()
+  }
+
+  private keepSelectionVisible(): void {
+    const viewHeight = this.scrollEl.clientHeight
+    if (!viewHeight) return
+
+    const top = minutesFromMidnight(this.from)
+    const bottom = top + this.duration
+    const viewTop = this.scrollEl.scrollTop
+
+    if (top < viewTop) this.scrollEl.scrollTop = Math.max(0, top - SLOT_MINUTES)
+    else if (bottom > viewTop + viewHeight) this.scrollEl.scrollTop = bottom - viewHeight + SLOT_MINUTES
   }
 
   private onMonthKeydown(event: KeyboardEvent): void {

@@ -61,8 +61,8 @@ const source = (events: PickerEvent[] = [], load: () => Promise<PickerEvent[]> =
   load: vi.fn(load),
 })
 
-const pressKey = (element: HTMLElement, key: string): void => {
-  element.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }))
+const pressKey = (element: HTMLElement, key: string, shiftKey = false): void => {
+  element.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true }))
 }
 
 const focusedDay = (): string | null => (document.activeElement as HTMLElement | null)?.dataset?.date ?? null
@@ -141,6 +141,95 @@ describe("EventDatePickerModal", () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1)
     expect(onSubmit).toHaveBeenCalledWith({ title: "Meeting", start: "2026-10-28T10:30:00", end: "2026-10-28T11:00:00" }, "confirm")
+  })
+
+  it("moves the selection by a slot with the up and down arrows", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "ArrowDown")
+    expect(selectionTime(modal)).toBe("10:45 → 11:15")
+
+    pressKey(document.body, "ArrowUp")
+    pressKey(document.body, "ArrowUp")
+    expect(selectionTime(modal)).toBe("10:15 → 10:45")
+  })
+
+  it("moves the selection to the next day with the right arrow", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "ArrowRight")
+
+    const block = columns(modal)[3].querySelector<HTMLElement>(`${PREFIX}__selection`)
+    expect(block).not.toBeNull()
+    expect(selectionTime(modal)).toBe("10:30 → 11:00")
+  })
+
+  it("walks the window when the selection leaves it", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    const label = () => modal.contentEl.querySelector(`${PREFIX}__days-label`)?.textContent
+
+    pressKey(document.body, "ArrowLeft")
+    pressKey(document.body, "ArrowLeft")
+    pressKey(document.body, "ArrowLeft")
+
+    expect(label()).toBe("19 - 25 October 2026")
+    expect(columns(modal)[6].querySelector(`${PREFIX}__selection`)).not.toBeNull()
+  })
+
+  it("stretches the end with shift and an arrow", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "ArrowDown", true)
+    expect(selectionTime(modal)).toBe("10:30 → 11:15")
+
+    pressKey(document.body, "ArrowUp", true)
+    pressKey(document.body, "ArrowUp", true)
+    expect(selectionTime(modal)).toBe("10:30 → 10:45")
+  })
+
+  it("never shrinks the selection below one slot", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "ArrowUp", true)
+    pressKey(document.body, "ArrowUp", true)
+
+    expect(selectionTime(modal)).toBe("10:30 → 10:45")
+  })
+
+  it("extends the end to the next day with shift and the right arrow", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "ArrowRight", true)
+
+    expect(selectionTime(modal)).toBe("10:30 → Thu 29 11:00")
+  })
+
+  it("stops at midnight when moving the selection down", () => {
+    const { modal } = openModal({ title: "Meeting" })
+    dayButton(modal, "2026-10-28").click()
+
+    for (let index = 0; index < 60; index++) pressKey(document.body, "ArrowDown")
+
+    expect(selectionTime(modal)).toBe("23:30 → Thu 29 00:00")
+  })
+
+  it("slides a three day window with the arrows", () => {
+    const { modal } = openModal({ title: "Meeting", dayCount: 3 })
+    dayButton(modal, "2026-10-28").click()
+
+    pressKey(document.body, "ArrowRight")
+    pressKey(document.body, "ArrowRight")
+    pressKey(document.body, "ArrowRight")
+
+    expect(modal.contentEl.querySelector(`${PREFIX}__days-label`)?.textContent).toBe("29 - 31 October 2026")
+    expect(columns(modal)[2].querySelector(`${PREFIX}__selection`)).not.toBeNull()
   })
 
   it("confirms with enter once the time grid is open", () => {
