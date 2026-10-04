@@ -26,6 +26,7 @@ import {
   SYNC_RETRY_BASE_MS,
   SYNC_STARTUP_DELAY_MS,
   autoSyncIntervalMs,
+  requestCalendarPush,
   shouldSyncNow,
   startCalendarSync,
 } from "src/google/syncScheduler"
@@ -394,6 +395,66 @@ describe("startCalendarSync", () => {
     cleanup()
 
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
+    expect(events.syncCalendarEvents).not.toHaveBeenCalled()
+  })
+
+  it("pushes right away when a push is requested", async () => {
+    const { plugin } = createPlugin()
+
+    startCalendarSync(plugin)
+    requestCalendarPush(plugin)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(events.syncCalendarEvents).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores a push request when the scheduler is not running", async () => {
+    const { plugin } = createPlugin()
+
+    requestCalendarPush(plugin)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(events.syncCalendarEvents).not.toHaveBeenCalled()
+  })
+
+  it("pushes a request that lands during a sync once the sync is done", async () => {
+    const { plugin } = createPlugin()
+    let calls = 0
+    const gate: { release: () => void } = { release: () => undefined }
+    const blocked = new Promise<void>((resolve) => {
+      gate.release = resolve
+    })
+
+    events.syncCalendarEvents.mockImplementation(async (target: ObsidianNotifierPlugin) => {
+      calls += 1
+      if (calls === 1) await blocked
+      target.settings.calendarSync.lastSyncAt = Date.now()
+
+      return emptyResult
+    })
+
+    startCalendarSync(plugin)
+    requestCalendarPush(plugin)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(calls).toBe(1)
+
+    // The sync is still in flight, so the second request has to wait for it instead of being dropped.
+    requestCalendarPush(plugin)
+    gate.release()
+    await vi.advanceTimersByTimeAsync(FORCED_SYNC_MIN_GAP_MS)
+
+    expect(calls).toBe(2)
+  })
+
+  it("stops pushing after unload", async () => {
+    const { plugin, register } = createPlugin()
+
+    startCalendarSync(plugin)
+    const cleanup = register.mock.calls[register.mock.calls.length - 1][0] as () => void
+    cleanup()
+    requestCalendarPush(plugin)
+    await vi.advanceTimersByTimeAsync(0)
+
     expect(events.syncCalendarEvents).not.toHaveBeenCalled()
   })
 })

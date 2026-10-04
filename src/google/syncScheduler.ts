@@ -49,6 +49,16 @@ const isWindowActive = (): boolean => {
   return !document.hidden && document.hasFocus()
 }
 
+const pushRequests = new WeakMap<ObsidianNotifierPlugin, () => void>()
+
+/**
+ * Asks the running scheduler to push local changes now. Used when the user has just confirmed
+ * something that cannot change again, so waiting for the heartbeat only delays the request.
+ */
+export const requestCalendarPush = (plugin: ObsidianNotifierPlugin): void => {
+  pushRequests.get(plugin)?.()
+}
+
 export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
   let failures = 0
   let retryAt = 0
@@ -59,6 +69,7 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
   let pushTimer: number | undefined
   let forcedRetryTimer: number | undefined
   let lastError: string | null = null
+  let queuedForce = false
 
   const reportError = (message: string): void => {
     if (message === lastError) return
@@ -122,14 +133,25 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
   }
 
   const tick = async (force: boolean): Promise<void> => {
-    if (running) return
+    if (running) {
+      // A push asked for during a sync still has to go out, right after the one in flight.
+      if (force) queuedForce = true
+
+      return
+    }
     running = true
 
     try {
       await run(force)
     } finally {
       running = false
-      schedule()
+
+      if (queuedForce) {
+        queuedForce = false
+        void tick(true)
+      } else {
+        schedule()
+      }
     }
   }
 
@@ -163,6 +185,8 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
       wake(true)
     }, PUSH_SYNC_DELAY_MS)
   }
+
+  pushRequests.set(plugin, () => wake(true))
 
   // Renaming a note is instant feedback: the date prefix is put back locally, then the new title is pushed.
   plugin.registerEvent(
@@ -198,6 +222,7 @@ export const startCalendarSync = (plugin: ObsidianNotifierPlugin): void => {
 
   plugin.register(() => {
     stopped = true
+    pushRequests.delete(plugin)
     if (timer !== undefined) window.clearTimeout(timer)
     if (pushTimer !== undefined) window.clearTimeout(pushTimer)
     if (forcedRetryTimer !== undefined) window.clearTimeout(forcedRetryTimer)

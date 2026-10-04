@@ -3,6 +3,7 @@ import { MarkdownView, Notice, normalizePath, type Editor, type EditorPosition }
 import { EventDatePickerModal, type EventDatePickerResult } from "src/components/eventDatePicker/eventDatePickerModal"
 import { createEventSource } from "src/components/eventDatePicker/eventSources"
 import { ensureFolder, noteBaseName, uniqueNotePath } from "src/google/eventsSync"
+import { requestCalendarPush } from "src/google/syncScheduler"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import { PLUGIN_NAME } from "src/utils/constants"
 
@@ -53,6 +54,9 @@ const createEventNote = async (
   const file = await vault.create(path, noteContent(result.start, result.end))
   const link = buildEventLink(path, result.title)
 
+  // The picker already settled the dates, so the note will not be edited again in a moment.
+  requestCalendarPush(plugin)
+
   if (context.editor && context.range) {
     context.editor.replaceRange(link, context.range.from, context.range.to)
   } else {
@@ -60,7 +64,11 @@ const createEventNote = async (
   }
 
   if (!context.copyLink) {
-    new Notice(`${PLUGIN_NAME}: event created. It is pushed to Google on the next sync.`)
+    new Notice(
+      plugin.settings.googleAuth
+        ? `${PLUGIN_NAME}: event created, sending it to Google.`
+        : `${PLUGIN_NAME}: event created. It is pushed to Google on the next sync.`,
+    )
 
     return
   }

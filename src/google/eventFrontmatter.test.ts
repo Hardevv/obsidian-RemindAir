@@ -28,6 +28,10 @@ const picker = vi.hoisted(() => {
 
 vi.mock("src/components/eventDatePicker/eventDatePickerModal", () => ({ EventDatePickerModal: picker.EventDatePickerModalMock }))
 
+const scheduler = vi.hoisted(() => ({ requestCalendarPush: vi.fn() }))
+
+vi.mock("src/google/syncScheduler", () => ({ requestCalendarPush: scheduler.requestCalendarPush }))
+
 const { EventDatePickerModalMock } = picker
 
 interface FakeFile {
@@ -41,6 +45,7 @@ interface PluginOptions {
   folder?: string
   selection?: string
   existingPaths?: string[]
+  connected?: boolean
 }
 
 const createPlugin = (options: PluginOptions = {}) => {
@@ -84,7 +89,10 @@ const createPlugin = (options: PluginOptions = {}) => {
   const openFile = vi.fn(async () => undefined)
 
   const plugin = {
-    settings: { googleCalendar: { ...DEFAULT_GCAL_SETTINGS, eventsFolder: options.folder ?? "Calendar" } },
+    settings: {
+      googleAuth: options.connected ? { accessToken: "token", refreshToken: "", expiresAt: 0, scope: "" } : null,
+      googleCalendar: { ...DEFAULT_GCAL_SETTINGS, eventsFolder: options.folder ?? "Calendar" },
+    },
     app: {
       workspace: { getActiveFile: () => file, getActiveViewOfType: () => ({ editor }), getLeaf: () => ({ openFile }) },
       fileManager: { processFrontMatter, renameFile },
@@ -117,6 +125,7 @@ describe("createEvent", () => {
     vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
     Notice.instances = []
     EventDatePickerModalMock.instances = []
+    scheduler.requestCalendarPush.mockClear()
   })
 
   afterEach(() => {
@@ -181,6 +190,25 @@ describe("createEvent", () => {
     )
     expect(openFile).not.toHaveBeenCalled()
     expect(Notice.instances.at(-1)?.message).toContain("pushed to Google on the next sync")
+  })
+
+  it("pushes the new event right away instead of waiting for the next sync", async () => {
+    const { plugin } = createPlugin({ selection: "Meeting with Bart", connected: true })
+
+    await createEvent(plugin)
+    await submit("Meeting with Bart")
+
+    expect(scheduler.requestCalendarPush).toHaveBeenCalledWith(plugin)
+    expect(Notice.instances.at(-1)?.message).toContain("sending it to Google")
+  })
+
+  it("does not promise a push when the account is disconnected", async () => {
+    const { plugin } = createPlugin({ selection: "Meeting with Bart" })
+
+    await createEvent(plugin)
+    await submit("Meeting with Bart")
+
+    expect(Notice.instances.at(-1)?.message).toContain("next sync")
   })
 
   it("opens the new note when there is no selection to link", async () => {
