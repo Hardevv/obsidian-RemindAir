@@ -1,7 +1,8 @@
 import type ObsidianNotifierPlugin from "main"
 import { MarkdownView } from "obsidian"
 import { DateTimePicker } from "src/components/dateTimePickerModal/dateTimePickerModal"
-import { createEvent } from "src/google/eventFrontmatter"
+import { createEvent, editEvent } from "src/google/eventFrontmatter"
+import { readEventNote } from "src/google/eventsSync"
 import { PLUGIN_NAME } from "src/utils/constants"
 import { getRandomIdSuffix } from "src/utils/ids"
 import { openReminderEditorAtCursor } from "src/utils/reminders"
@@ -54,8 +55,24 @@ const createEventCommand = (plugin: ObsidianNotifierPlugin) => {
   })
 }
 
+const editEventCommand = (plugin: ObsidianNotifierPlugin) => {
+  plugin.addCommand({
+    id: `${PLUGIN_NAME}_edit-event`,
+    name: "Edit event",
+    // Only event notes get the command, so the palette never offers it where it cannot work.
+    checkCallback: (checking) => {
+      const note = readEventNote(plugin, plugin.app.workspace.getActiveViewOfType(MarkdownView)?.file)
+      if (!note) return false
+      if (!checking) void editEvent(plugin, note)
+
+      return true
+    },
+  })
+}
+
 export const registerCommands = (plugin: ObsidianNotifierPlugin) => {
   setReminder(plugin)
   editReminderInLine(plugin)
   createEventCommand(plugin)
+  editEventCommand(plugin)
 }

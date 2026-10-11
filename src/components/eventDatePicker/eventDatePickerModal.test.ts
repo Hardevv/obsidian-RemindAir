@@ -840,3 +840,66 @@ describe("EventDatePickerModal", () => {
     expect(focusedDay()).toBeNull()
   })
 })
+
+describe("EventDatePickerModal in the edit variant", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    document.body.innerHTML = ""
+  })
+
+  const editModal = (options: Partial<EventDatePickerOptions> = {}) =>
+    openModal({
+      variant: "edit",
+      title: "Client meeting",
+      initialStart: new Date(2026, 9, 28, 9, 15),
+      initialEnd: new Date(2026, 9, 28, 10, 45),
+      ...options,
+    })
+
+  it("opens on the day grid with the current range selected", () => {
+    const { modal } = editModal()
+
+    expect(modal.titleEl.textContent).toBe("Edit calendar event")
+    expect((modal.contentEl.querySelector(`${PREFIX}__month`) as HTMLElement).hidden).toBe(true)
+    expect(columns(modal)).toHaveLength(7)
+    expect(selectionTime(modal)).toBe("09:15 → 10:45")
+    expect(selectionTitle(modal)).toBe("Client meeting")
+  })
+
+  it("keeps the title editable and prefilled", () => {
+    const { modal } = editModal()
+    const input = modal.contentEl.querySelector<HTMLInputElement>(`${PREFIX}__title-input`)
+
+    expect(input?.value).toBe("Client meeting")
+  })
+
+  it("hands the keyboard to the day grid instead of the name field", () => {
+    const { modal } = editModal()
+
+    expect(document.activeElement).toBe(modal.contentEl.querySelector(`${PREFIX}__days`))
+  })
+
+  it("offers save and cancel, without a copy link or a next step", () => {
+    const { modal } = editModal()
+    const labels = Array.from(modal.contentEl.querySelectorAll(`${PREFIX}__actions button`)).map((button) => button.textContent)
+
+    expect(labels).toEqual(["Cancel", "Save"])
+  })
+
+  it("submits the range the user picked", () => {
+    const { modal, onSubmit } = editModal()
+
+    pressKey(modal.contentEl.querySelector(`${PREFIX}__days`) as HTMLElement, "ArrowDown")
+    confirmButton(modal).click()
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      { title: "Client meeting", start: "2026-10-28T09:30:00", end: "2026-10-28T11:00:00" },
+      "confirm",
+    )
+  })
+})

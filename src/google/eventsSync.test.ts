@@ -38,6 +38,7 @@ import {
   parseCalendarNames,
   parseNoteName,
   payloadKey,
+  readEventNote,
   sanitizeFileName,
   syncCalendarEvents,
 } from "src/google/eventsSync"
@@ -287,6 +288,61 @@ describe("fixNoteName", () => {
     await expect(fixNoteName(plugin, outside as never)).resolves.toBe(false)
     await expect(fixNoteName(plugin, noStart as never)).resolves.toBe(false)
     expect(renamed).toHaveLength(0)
+  })
+})
+
+describe("readEventNote", () => {
+  const note = (path: string, frontmatter: Record<string, unknown>): FakeFile =>
+    withBasename({ path, stat: { mtime: 0 }, frontmatter, content: "" })
+
+  it("reads the title from the note name and the range from the properties", () => {
+    const file = note("Calendar/2026-11-02 10-00 │ Client meeting.md", {
+      start: "2026-11-02T10:00:00+01:00",
+      end: "2026-11-02T11:00:00+01:00",
+    })
+    const { plugin } = createPlugin({}, [file])
+
+    expect(readEventNote(plugin, file as never)).toMatchObject({
+      title: "Client meeting",
+      start: "2026-11-02T10:00:00+01:00",
+      end: "2026-11-02T11:00:00+01:00",
+    })
+  })
+
+  it("falls back to the title property for a note without a date prefix", () => {
+    const file = note("Calendar/Client meeting.md", { start: "2026-11-02T10:00:00+01:00", title: "Client meeting" })
+    const { plugin } = createPlugin({}, [file])
+
+    expect(readEventNote(plugin, file as never)?.title).toBe("Client meeting")
+  })
+
+  it("ignores notes outside the events folder", () => {
+    const file = note("Other/2026-11-02 10-00 │ Client meeting.md", { start: "2026-11-02T10:00:00+01:00" })
+    const { plugin } = createPlugin({}, [file])
+
+    expect(readEventNote(plugin, file as never)).toBeNull()
+  })
+
+  it("ignores a note without a start or with an unreadable one", () => {
+    const noStart = note("Calendar/2026-11-02 10-00 │ Client meeting.md", {})
+    const broken = note("Calendar/2026-11-02 11-00 │ Client meeting.md", { start: "not a date" })
+    const { plugin } = createPlugin({}, [noStart, broken])
+
+    expect(readEventNote(plugin, noStart as never)).toBeNull()
+    expect(readEventNote(plugin, broken as never)).toBeNull()
+  })
+
+  it("ignores a note with a remindair property that is not valid JSON", () => {
+    const file = note("Calendar/2026-11-02 10-00 │ Client meeting.md", { start: "2026-11-02T10:00:00+01:00", remindair: "{" })
+    const { plugin } = createPlugin({}, [file])
+
+    expect(readEventNote(plugin, file as never)).toBeNull()
+  })
+
+  it("ignores a missing file", () => {
+    const { plugin } = createPlugin()
+
+    expect(readEventNote(plugin, null)).toBeNull()
   })
 })
 

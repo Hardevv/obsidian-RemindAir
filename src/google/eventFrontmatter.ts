@@ -1,8 +1,8 @@
 import type ObsidianNotifierPlugin from "main"
-import { MarkdownView, Notice, normalizePath, type Editor, type EditorPosition } from "obsidian"
+import { MarkdownView, Notice, normalizePath, type Editor, type EditorPosition, type TFile } from "obsidian"
 import { EventDatePickerModal, type EventDatePickerResult } from "src/components/eventDatePicker/eventDatePickerModal"
 import { createEventSource } from "src/components/eventDatePicker/eventSources"
-import { ensureFolder, noteBaseName, uniqueNotePath } from "src/google/eventsSync"
+import { ensureFolder, noteBaseName, uniqueNotePath, type EventNote } from "src/google/eventsSync"
 import { requestCalendarPush } from "src/google/syncScheduler"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import { PLUGIN_NAME } from "src/utils/constants"
@@ -12,12 +12,20 @@ const eventsFolder = (plugin: ObsidianNotifierPlugin): string =>
 
 const linkAlias = (title: string): string => title.replace(/[[\]|]/g, "-").trim() || "event"
 
-const eventNotePath = (plugin: ObsidianNotifierPlugin, start: string, title: string): string => {
-  const folder = eventsFolder(plugin)
+const folderOf = (path: string): string => {
+  const index = path.lastIndexOf("/")
+
+  return index === -1 ? "" : path.slice(0, index)
+}
+
+const eventPath = (folder: string, start: string, title: string): string => {
   const base = `${noteBaseName(start, title)}.md`
 
   return normalizePath(folder ? `${folder}/${base}` : base)
 }
+
+const eventNotePath = (plugin: ObsidianNotifierPlugin, start: string, title: string): string =>
+  eventPath(eventsFolder(plugin), start, title)
 
 export const buildEventLink = (path: string, title: string): string => `[[${path.replace(/\.md$/, "")}|${linkAlias(title)}]]`
 
@@ -96,6 +104,50 @@ export const createEvent = async (plugin: ObsidianNotifierPlugin): Promise<boole
       plugin.app.vault.getAbstractFileByPath(eventNotePath(plugin, result.start, result.title))
         ? `An event called "${result.title}" already starts at that time.`
         : null,
+  }).open()
+
+  return true
+}
+
+const saveEventNote = async (
+  plugin: ObsidianNotifierPlugin,
+  file: TFile,
+  result: EventDatePickerResult,
+): Promise<void> => {
+  await plugin.app.fileManager.processFrontMatter(file, (data) => {
+    data.start = result.start
+    data.end = result.end
+  })
+
+  // The name carries the date and the title, so it has to follow the frontmatter.
+  const folder = folderOf(file.path)
+  const base = noteBaseName(result.start, result.title)
+  if (file.path !== eventPath(folder, result.start, result.title)) {
+    await plugin.app.fileManager.renameFile(file, uniqueNotePath(plugin.app.vault, folder, base, file.path))
+  }
+
+  // The picker already settled the dates, so there is no later edit to wait for.
+  requestCalendarPush(plugin)
+  new Notice(`${PLUGIN_NAME}: event updated.`)
+}
+
+/** Opens the same picker on an existing event note. The native properties stay editable. */
+export const editEvent = (plugin: ObsidianNotifierPlugin, note: EventNote): boolean => {
+  new EventDatePickerModal(plugin, {
+    variant: "edit",
+    title: note.title,
+    initialStart: new Date(note.start),
+    initialEnd: note.end ? new Date(note.end) : null,
+    eventSource: createEventSource(plugin),
+    onSubmit: (result) => saveEventNote(plugin, note.file, result),
+    validate: (result) => {
+      const target = eventPath(folderOf(note.file.path), result.start, result.title)
+      if (target === note.file.path) return null
+
+      return plugin.app.vault.getAbstractFileByPath(target)
+        ? `An event called "${result.title}" already starts at that time.`
+        : null
+    },
   }).open()
 
   return true

@@ -587,6 +587,34 @@ export const fixNoteName = async (plugin: ObsidianNotifierPlugin, file: TFile): 
   return true
 }
 
+export interface EventNote {
+  file: TFile
+  title: string
+  start: string
+  end: string
+}
+
+/**
+ * The note the sync would push: in the events folder, with a readable start and valid metadata.
+ * Same rule as the push, so the UI never offers editing for something the sync ignores.
+ */
+export const readEventNote = (plugin: ObsidianNotifierPlugin, file: TFile | null | undefined): EventNote | null => {
+  if (!file || !file.path.endsWith(".md")) return null
+
+  const folder = calendarEventsFolder(plugin.settings.googleCalendar)
+  if (!folder || !file.path.startsWith(`${folder}/`)) return null
+
+  const frontmatter = plugin.app.metadataCache.getFileCache(file)?.frontmatter
+  if (!frontmatter || !parseNoteMetadata(frontmatter)) return null
+
+  const start = frontmatterText(frontmatter.start)
+  if (!start || !toEventDateTime(start)) return null
+
+  const title = parseNoteName(file.basename).title || frontmatterText(frontmatter.title) || "Untitled event"
+
+  return { file, title, start, end: frontmatterText(frontmatter.end) }
+}
+
 const fetchEventsPage = async (
   accessToken: string,
   calendarId: string,

@@ -30,7 +30,11 @@ const picker = vi.hoisted(() => {
   return { DateTimePickerMock }
 })
 
+const noteApi = vi.hoisted(() => ({ readEventNote: vi.fn(), createEvent: vi.fn(), editEvent: vi.fn() }))
+
 vi.mock("src/components/dateTimePickerModal/dateTimePickerModal", () => ({ DateTimePicker: picker.DateTimePickerMock }))
+vi.mock("src/google/eventsSync", () => ({ readEventNote: noteApi.readEventNote }))
+vi.mock("src/google/eventFrontmatter", () => ({ createEvent: noteApi.createEvent, editEvent: noteApi.editEvent }))
 vi.mock("src/utils/ids", () => ({ getRandomIdSuffix: () => "z" }))
 vi.mock("src/utils/reminders", () => ({ openReminderEditorAtCursor: vi.fn() }))
 
@@ -55,8 +59,8 @@ const createEditor = (lines: string[], cursor = { line: 0, ch: 0 }): Editor => {
   return editor as unknown as Editor
 }
 
-const createPlugin = (editor?: Editor) => {
-  const getActiveViewOfType = vi.fn(() => (editor ? { editor } : null))
+const createPlugin = (editor?: Editor, file?: { path: string }) => {
+  const getActiveViewOfType = vi.fn(() => (editor || file ? { editor, file } : null))
   const addCommand = vi.fn()
   const saveSettings = vi.fn(async () => {})
 
@@ -131,6 +135,7 @@ describe("setReminderFunc", () => {
 describe("registerCommands", () => {
   beforeEach(() => {
     DateTimePickerMock.instances = []
+    noteApi.readEventNote.mockReset()
     vi.clearAllMocks()
   })
 
@@ -139,11 +144,12 @@ describe("registerCommands", () => {
 
     registerCommands(plugin)
 
-    expect(addCommand).toHaveBeenCalledTimes(3)
+    expect(addCommand).toHaveBeenCalledTimes(4)
     expect(addCommand.mock.calls.map(([command]) => command.id)).toEqual([
       `${PLUGIN_NAME}_set-reminder`,
       `${PLUGIN_NAME}_edit-reminder-at-cursor`,
       `${PLUGIN_NAME}_create-event`,
+      `${PLUGIN_NAME}_edit-event`,
     ])
   })
 
@@ -156,6 +162,7 @@ describe("registerCommands", () => {
       "🔔 Remind me! - set reminder for this line",
       "🔔 Edit reminder! - edit reminder in this line",
       "Create event",
+      "Edit event",
     ])
   })
 
@@ -168,6 +175,35 @@ describe("registerCommands", () => {
     setReminderCommand.callback()
 
     expect(DateTimePickerMock.instances).toHaveLength(1)
+  })
+
+  it("offers the edit event command only inside an event note", () => {
+    const file = { path: "Calendar/2026-11-02 10-00 │ Client meeting.md" }
+    const { plugin, addCommand } = createPlugin(undefined, file)
+    const note = { file, title: "Client meeting", start: "2026-11-02T10:00:00", end: "2026-11-02T11:00:00" }
+    noteApi.readEventNote.mockReturnValue(note)
+
+    registerCommands(plugin)
+    const command = addCommand.mock.calls[3][0]
+
+    expect(command.checkCallback(true)).toBe(true)
+    expect(noteApi.editEvent).not.toHaveBeenCalled()
+
+    command.checkCallback(false)
+    expect(noteApi.editEvent).toHaveBeenCalledWith(plugin, note)
+  })
+
+  it("hides the edit event command outside an event note", () => {
+    const { plugin, addCommand } = createPlugin(undefined, { path: "Notes/Meeting.md" })
+    noteApi.readEventNote.mockReturnValue(null)
+
+    registerCommands(plugin)
+    const command = addCommand.mock.calls[3][0]
+
+    expect(command.checkCallback(true)).toBe(false)
+
+    command.checkCallback(false)
+    expect(noteApi.editEvent).not.toHaveBeenCalled()
   })
 
   it("edits the reminder at the cursor from the edit command", () => {

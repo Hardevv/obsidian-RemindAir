@@ -50,6 +50,10 @@ export interface EventDatePickerOptions {
   /** Fixed title, usually the selection. When missing the modal asks for a name first. */
   title?: string | null
   initialStart?: Date
+  /** End of an existing event, only used by the edit variant. */
+  initialEnd?: Date | null
+  /** The edit variant opens on the day grid with the current range already selected. */
+  variant?: "create" | "edit"
   dayCount?: number
   eventSource?: PickerEventSource
   onSubmit: (result: EventDatePickerResult, action: EventDatePickerAction) => unknown
@@ -75,6 +79,7 @@ type PickerFocus = { target: "title"; caret: number | null } | { target: "calend
 export class EventDatePickerModal extends Modal {
   private plugin: ObsidianNotifierPlugin
   private options: EventDatePickerOptions
+  private variant: "create" | "edit"
   private titleMode: boolean
   private title: string
   private mode: "month" | "days" = "month"
@@ -107,28 +112,45 @@ export class EventDatePickerModal extends Modal {
     super(plugin.app)
     this.plugin = plugin
     this.options = options
-    this.titleMode = !options.title
+    this.variant = options.variant ?? "create"
+    // Editing keeps the name field, so the title can change together with the dates.
+    this.titleMode = this.variant === "edit" || !options.title
     this.title = options.title ?? ""
 
     const initial = options.initialStart ?? new Date()
-    // Default to a half hour slot that starts in a quarter of an hour.
-    const startMinutes = Math.min(
-      snapUp(minutesFromMidnight(initial)) + START_LEAD_MINUTES,
-      MINUTES_IN_DAY - DEFAULT_DURATION_MINUTES,
-    )
-    this.from = atMinutes(startOfDay(initial), startMinutes)
-    this.to = addMinutes(this.from, DEFAULT_DURATION_MINUTES)
-    this.anchorDate = startOfDay(initial)
+    if (this.variant === "edit") {
+      // The range is already known, so it is used as is instead of snapping to the next slot.
+      this.from = new Date(initial)
+      const end = options.initialEnd && options.initialEnd.getTime() > this.from.getTime() ? options.initialEnd : null
+      this.to = end ? new Date(end) : addMinutes(this.from, DEFAULT_DURATION_MINUTES)
+      this.mode = "days"
+    } else {
+      // Default to a half hour slot that starts in a quarter of an hour.
+      const startMinutes = Math.min(
+        snapUp(minutesFromMidnight(initial)) + START_LEAD_MINUTES,
+        MINUTES_IN_DAY - DEFAULT_DURATION_MINUTES,
+      )
+      this.from = atMinutes(startOfDay(initial), startMinutes)
+      this.to = addMinutes(this.from, DEFAULT_DURATION_MINUTES)
+    }
+    this.anchorDate = startOfDay(this.from)
     this.focusedDay = this.anchorDate
-    this.monthAnchor = new Date(initial.getFullYear(), initial.getMonth(), 1)
+    this.monthAnchor = new Date(this.from.getFullYear(), this.from.getMonth(), 1)
 
     this.modalEl.addClass(`${PLUGIN_NAME}-event-picker-modal`)
-    this.titleEl.textContent = "New calendar event"
+    this.titleEl.textContent = this.variant === "edit" ? "Edit calendar event" : "New calendar event"
   }
 
   onOpen(): void {
     this.closed = false
     this.render()
+
+    if (this.variant === "edit") {
+      this.scrollToSelection()
+      this.focusCalendar()
+
+      return
+    }
 
     // Without a focused day the arrows go to the document and never reach the grid.
     if (this.titleInput) this.titleInput.focus()
@@ -567,12 +589,16 @@ export class EventDatePickerModal extends Modal {
       return
     }
 
-    if (this.titleMode) {
+    // Editing an existing note has nothing to copy, the link already lives where the user put it.
+    if (this.titleMode && this.variant === "create") {
       const copy = actions.createEl("button", { cls: `${cls("submit")} mod-secondary`, text: "Confirm & copy link" })
       copy.addEventListener("click", () => this.submit("copy-link"))
     }
 
-    const confirm = actions.createEl("button", { cls: `${cls("submit")} mod-cta`, text: "Confirm" })
+    const confirm = actions.createEl("button", {
+      cls: `${cls("submit")} mod-cta`,
+      text: this.variant === "edit" ? "Save" : "Confirm",
+    })
     confirm.addEventListener("click", () => this.submit("confirm"))
   }
 

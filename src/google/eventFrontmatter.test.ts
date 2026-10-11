@@ -3,7 +3,7 @@ import type ObsidianNotifierPlugin from "main"
 import { Notice } from "tests/mocks/obsidian"
 import { DEFAULT_GCAL_SETTINGS } from "src/settings/defaults"
 import { formatLocalDateTime } from "src/utils/dates"
-import { buildEventLink, createEvent } from "src/google/eventFrontmatter"
+import { buildEventLink, createEvent, editEvent } from "src/google/eventFrontmatter"
 
 const picker = vi.hoisted(() => {
   class EventDatePickerModalMock {
@@ -15,6 +15,9 @@ const picker = vi.hoisted(() => {
       public plugin: unknown,
       public options: {
         title?: string | null
+        variant?: "create" | "edit"
+        initialStart?: Date
+        initialEnd?: Date | null
         onSubmit: (result: unknown, action: string) => unknown
         validate?: (result: { title: string; start: string; end: string }) => string | null
       },
@@ -250,5 +253,98 @@ describe("createEvent", () => {
 
     expect(created).toHaveLength(1)
     expect(Notice.instances.at(-1)?.message).toContain("could not be copied")
+  })
+})
+
+describe("editEvent", () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 9, 28, 10, 7, 42))
+    Notice.instances = []
+    EventDatePickerModalMock.instances = []
+    scheduler.requestCalendarPush.mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const lastPicker = () => {
+    const instance = EventDatePickerModalMock.instances.at(-1)
+    if (!instance) throw new Error("the picker was not opened")
+
+    return instance
+  }
+
+  const noteFile = (path = "Calendar/2026-11-02 10-00 │ Client meeting.md") => ({
+    path,
+    basename: path.split("/").pop()?.replace(/\.md$/, "") ?? "",
+  })
+
+  const eventNote = (file = noteFile()) => ({
+    file: file as never,
+    title: "Client meeting",
+    start: "2026-11-02T10:00:00",
+    end: "2026-11-02T11:00:00",
+  })
+
+  const save = (result = { title: "Client meeting", start: "2026-11-02T12:00:00", end: "2026-11-02T12:30:00" }) =>
+    lastPicker().options.onSubmit(result, "confirm")
+
+  it("opens the picker in the edit variant with the note range and title", async () => {
+    const { plugin } = createPlugin({ existingPaths: ["Calendar/2026-11-02 10-00 │ Client meeting.md"] })
+    const note = eventNote()
+
+    await editEvent(plugin, note)
+
+    expect(lastPicker().options.variant).toBe("edit")
+    expect(lastPicker().options.title).toBe("Client meeting")
+    expect(lastPicker().options.initialStart).toEqual(new Date("2026-11-02T10:00:00"))
+    expect(lastPicker().options.initialEnd).toEqual(new Date("2026-11-02T11:00:00"))
+  })
+
+  it("writes the new range, renames the note and pushes right away", async () => {
+    const file = noteFile()
+    const { plugin, frontmatter, renamed } = createPlugin({
+      existingPaths: [file.path],
+      file,
+    })
+    const note = eventNote(file)
+
+    await editEvent(plugin, note)
+    await save()
+
+    expect(frontmatter).toMatchObject({ start: "2026-11-02T12:00:00", end: "2026-11-02T12:30:00" })
+    expect(renamed).toEqual(["Calendar/2026-11-02 12-00 │ Client meeting.md"])
+    expect(scheduler.requestCalendarPush).toHaveBeenCalledWith(plugin)
+    expect(Notice.instances.at(-1)?.message).toContain("event updated")
+  })
+
+  it("does not rename when the name already matches", async () => {
+    const file = noteFile("Calendar/2026-11-02 10-00 │ Client meeting.md")
+    const { plugin, renamed } = createPlugin({ existingPaths: [file.path], file })
+
+    await editEvent(plugin, eventNote(file))
+    await save({ title: "Client meeting", start: "2026-11-02T10:00:00", end: "2026-11-02T10:30:00" })
+
+    expect(renamed).toEqual([])
+  })
+
+  it("blocks a name that another event already uses, but not its own", async () => {
+    const file = noteFile()
+    const { plugin } = createPlugin({
+      existingPaths: [file.path, "Calendar/2026-11-02 12-00 │ Client meeting.md"],
+      file,
+    })
+
+    await editEvent(plugin, eventNote(file))
+
+    const validate = lastPicker().options.validate
+    if (!validate) throw new Error("no validator")
+
+    expect(validate({ title: "Client meeting", start: "2026-11-02T10:00:00", end: "2026-11-02T10:30:00" })).toBeNull()
+    expect(validate({ title: "Client meeting", start: "2026-11-02T12:00:00", end: "2026-11-02T12:30:00" })).toContain(
+      "already starts",
+    )
   })
 })
