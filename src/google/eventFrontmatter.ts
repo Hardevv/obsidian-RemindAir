@@ -139,6 +139,7 @@ export const editEvent = (plugin: ObsidianNotifierPlugin, note: EventNote): bool
     initialStart: new Date(note.start),
     initialEnd: note.end ? new Date(note.end) : null,
     eventSource: createEventSource(plugin),
+    onOpenFile: () => void plugin.app.workspace.getLeaf(false).openFile(note.file),
     onSubmit: (result) => saveEventNote(plugin, note.file, result),
     validate: (result) => {
       const target = eventPath(folderOf(note.file.path), result.start, result.title)

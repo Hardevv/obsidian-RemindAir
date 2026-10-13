@@ -2,6 +2,8 @@ import { vi } from "vitest"
 
 export const setIcon = vi.fn()
 
+export const setTooltip = vi.fn()
+
 export const requestUrl = vi.fn()
 
 export const normalizePath = (path: string): string =>

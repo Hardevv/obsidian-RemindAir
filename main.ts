@@ -1,5 +1,6 @@
 import { Plugin } from "obsidian"
 import { registerCommands } from "src/commands"
+import { registerEventLinks } from "src/eventLinks"
 import { registerEventNoteAction } from "src/eventNoteAction"
 import { startCalendarSync } from "src/google/syncScheduler"
 import { DEFAULT_SETTINGS, normalizeCalendarSync, normalizeGCalSettings, normalizeGoogleAuth, registerSettings } from "src/settings"
@@ -16,6 +17,7 @@ export default class ObsidianNotifierPlugin extends Plugin {
     registerWidgets(this)
     registerCommands(this)
     registerEventNoteAction(this)
+    registerEventLinks(this)
     startCalendarSync(this)
   }
 

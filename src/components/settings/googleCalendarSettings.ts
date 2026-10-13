@@ -121,6 +121,20 @@ const renderGoogleCalendarSettings = (containerEl: HTMLElement, plugin: Obsidian
     })
 
   new Setting(containerEl)
+    .setName("Link tooltip delay")
+    .setDesc("How long the date tooltip waits on an event link, in milliseconds. Obsidian waits a full second by default.")
+    .addText((text) => {
+      text.inputEl.type = "number"
+      text.inputEl.min = "0"
+      text.inputEl.max = "5000"
+      text.setValue(String(gcal.eventLinkTooltipDelayMs)).onChange(async (value) => {
+        const parsed = Number.parseInt(value, 10)
+        gcal.eventLinkTooltipDelayMs = Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 5000) : 200
+        await plugin.saveSettings()
+      })
+    })
+
+  new Setting(containerEl)
     .setName("Auto sync")
     .setDesc(
       "How often to sync, in seconds, while Obsidian is open. Switching back to the Obsidian window syncs right away. 0 disables automatic syncing, the minimum is 15.",

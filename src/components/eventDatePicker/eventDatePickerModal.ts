@@ -59,6 +59,8 @@ export interface EventDatePickerOptions {
   onSubmit: (result: EventDatePickerResult, action: EventDatePickerAction) => unknown
   /** Returns a message when the result cannot be created, for example a note that already exists. */
   validate?: (result: EventDatePickerResult) => string | null
+  /** Shows an `Open file` button, for the flows that opened the picker from a link. */
+  onOpenFile?: () => void
 }
 
 const DEFAULT_DURATION_MINUTES = 30
@@ -565,14 +567,24 @@ export class EventDatePickerModal extends Modal {
   private renderFooter(): void {
     this.footerEl.empty()
 
+    const left = this.footerEl.createDiv({ cls: cls("left") })
+
     if (this.mode === "days") {
-      const back = this.footerEl.createEl("button", { cls: cls("back") })
+      const back = left.createEl("button", { cls: cls("back") })
       setIcon(back, "chevron-left")
       back.createSpan({ text: "Month" })
       back.addEventListener("click", () => {
         this.mode = "month"
         this.render()
         this.syncMonthFocus()
+      })
+    }
+
+    if (this.options.onOpenFile) {
+      const openFile = left.createEl("button", { cls: cls("open-file"), text: "Open file" })
+      openFile.addEventListener("click", () => {
+        this.options.onOpenFile?.()
+        this.close()
       })
     }
 

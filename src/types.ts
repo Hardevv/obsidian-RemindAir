@@ -14,6 +14,8 @@ export interface GCalSettings {
   addObsidianLink: boolean
   deleteEventsWithNotes: boolean
   taskListName: string
+  /** How long the date tooltip waits on an event link, in milliseconds. */
+  eventLinkTooltipDelayMs: number
 }
 
 export interface SyncedNote {

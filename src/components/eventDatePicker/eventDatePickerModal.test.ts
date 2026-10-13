@@ -891,6 +891,25 @@ describe("EventDatePickerModal in the edit variant", () => {
     expect(labels).toEqual(["Cancel", "Save"])
   })
 
+  it("offers an open file button that opens the note and closes the modal", () => {
+    const onOpenFile = vi.fn()
+    const { modal } = editModal({ onOpenFile })
+    const close = vi.spyOn(modal, "close")
+    const button = modal.contentEl.querySelector<HTMLElement>(`${PREFIX}__open-file`)
+    if (!button) throw new Error("no open file button")
+
+    button.click()
+
+    expect(onOpenFile).toHaveBeenCalledTimes(1)
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it("has no open file button without a handler", () => {
+    const { modal } = editModal()
+
+    expect(modal.contentEl.querySelector(`${PREFIX}__open-file`)).toBeNull()
+  })
+
   it("submits the range the user picked", () => {
     const { modal, onSubmit } = editModal()
 

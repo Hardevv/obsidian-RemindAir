@@ -20,6 +20,7 @@ describe("DEFAULT_GCAL_SETTINGS", () => {
       addObsidianLink: true,
       deleteEventsWithNotes: true,
       taskListName: "@default",
+      eventLinkTooltipDelayMs: 200,
     })
   })
 })
@@ -98,6 +99,7 @@ describe("normalizeGCalSettings", () => {
       addObsidianLink: false,
       deleteEventsWithNotes: false,
       taskListName: "Tasks",
+      eventLinkTooltipDelayMs: 350,
     }
 
     expect(normalizeGCalSettings(stored)).toEqual(stored)
@@ -119,6 +121,16 @@ describe("normalizeGCalSettings", () => {
     expect(result.autoSyncSeconds).toBe(0)
     expect(result.addObsidianLink).toBe(false)
     expect(result.accountEmail).toBe("")
+  })
+
+  it("keeps a tooltip delay of zero and clamps the rest", () => {
+    expect(normalizeGCalSettings({ eventLinkTooltipDelayMs: 0 }).eventLinkTooltipDelayMs).toBe(0)
+    expect(normalizeGCalSettings({ eventLinkTooltipDelayMs: 350 }).eventLinkTooltipDelayMs).toBe(350)
+    expect(normalizeGCalSettings({ eventLinkTooltipDelayMs: 9000 }).eventLinkTooltipDelayMs).toBe(5000)
+    expect(normalizeGCalSettings({ eventLinkTooltipDelayMs: -5 }).eventLinkTooltipDelayMs).toBe(
+      DEFAULT_GCAL_SETTINGS.eventLinkTooltipDelayMs,
+    )
+    expect(normalizeGCalSettings({}).eventLinkTooltipDelayMs).toBe(DEFAULT_GCAL_SETTINGS.eventLinkTooltipDelayMs)
   })
 
   it("converts the legacy auto sync minutes into seconds", () => {

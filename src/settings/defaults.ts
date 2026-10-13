@@ -9,6 +9,7 @@ export const DEFAULT_GCAL_SETTINGS: GCalSettings = {
   addObsidianLink: true,
   deleteEventsWithNotes: true,
   taskListName: "@default",
+  eventLinkTooltipDelayMs: 200,
 }
 
 export const DEFAULT_CALENDAR_SYNC_STATE: CalendarSyncState = {
@@ -30,6 +31,14 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 
 type StoredGCalSettings = Partial<GCalSettings> & { autoSyncMinutes?: number }
 
+const MAX_TOOLTIP_DELAY_MS = 5000
+
+const normalizeTooltipDelay = (value: number | undefined): number => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return DEFAULT_GCAL_SETTINGS.eventLinkTooltipDelayMs
+
+  return Math.min(Math.round(value), MAX_TOOLTIP_DELAY_MS)
+}
+
 export function normalizeGCalSettings(stored?: StoredGCalSettings | null): GCalSettings {
   // The old minutes field was never wired to a timer, so a stored 0 only means "never configured".
   const legacySeconds =
@@ -44,6 +53,7 @@ export function normalizeGCalSettings(stored?: StoredGCalSettings | null): GCalS
     addObsidianLink: stored?.addObsidianLink ?? DEFAULT_GCAL_SETTINGS.addObsidianLink,
     deleteEventsWithNotes: stored?.deleteEventsWithNotes ?? DEFAULT_GCAL_SETTINGS.deleteEventsWithNotes,
     taskListName: stored?.taskListName ?? DEFAULT_GCAL_SETTINGS.taskListName,
+    eventLinkTooltipDelayMs: normalizeTooltipDelay(stored?.eventLinkTooltipDelayMs),
   }
 }
 

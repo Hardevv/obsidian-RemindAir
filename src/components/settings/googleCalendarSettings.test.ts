@@ -40,6 +40,7 @@ const DEFAULT_GCAL: GCalSettings = {
   addObsidianLink: true,
   deleteEventsWithNotes: true,
   taskListName: "@default",
+  eventLinkTooltipDelayMs: 200,
 }
 
 const createPlugin = (overrides: Partial<GCalSettings> = {}, scope = "") => {
@@ -227,6 +228,7 @@ describe("displayGoogleCalendarSettings", () => {
         "Calendars to list",
         "Events folder",
         "Days ahead",
+        "Link tooltip delay",
         "Auto sync",
         "Google task list",
         "Add note link",
@@ -355,6 +357,20 @@ describe("displayGoogleCalendarSettings", () => {
       await byName("Days ahead")?.texts[0].onChangeCb?.("abc")
 
       expect(plugin.settings.googleCalendar.pullDays).toBe(60)
+    })
+
+    it("saves a valid tooltip delay and clamps the rest", async () => {
+      const { plugin } = createPlugin(connected)
+
+      render(plugin)
+      await byName("Link tooltip delay")?.texts[0].onChangeCb?.("0")
+      expect(plugin.settings.googleCalendar.eventLinkTooltipDelayMs).toBe(0)
+
+      await byName("Link tooltip delay")?.texts[0].onChangeCb?.("9000")
+      expect(plugin.settings.googleCalendar.eventLinkTooltipDelayMs).toBe(5000)
+
+      await byName("Link tooltip delay")?.texts[0].onChangeCb?.("abc")
+      expect(plugin.settings.googleCalendar.eventLinkTooltipDelayMs).toBe(200)
     })
 
     it("saves a valid auto sync interval", async () => {
